@@ -1,0 +1,1764 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>U-Boot 2026.10 功能全解析</title>
+<style>
+  :root {
+    --bg: #f2f3f5;
+    --surface: #ffffff;
+    --ink: #1c2733;
+    --ink-2: #4a5a6a;
+    --ink-3: #7c8a99;
+    --line: #e3e7ec;
+    --accent: #0b57d0;
+    --accent-weak: #e8f0fe;
+    --green: #1a7f37;
+    --green-weak: #e6f4ea;
+    --orange: #9a6700;
+    --orange-weak: #fdf3d7;
+    --red: #c62828;
+    --red-weak: #fdecea;
+    --violet: #6941c6;
+    --violet-weak: #f0ebfc;
+    --code-bg: #eef1f5;
+    --sidebar-w: 274px;
+    --radius: 12px;
+    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 1px 6px rgba(16,24,40,.06);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.75;
+    font-size: 15px;
+  }
+  code, pre, kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Code", monospace;
+  }
+
+  /* ================= 侧边栏 ================= */
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0;
+    width: var(--sidebar-w);
+    background: var(--surface);
+    border-right: 1px solid var(--line);
+    overflow-y: auto;
+    z-index: 100;
+  }
+  .brand { padding: 18px 20px 14px; border-bottom: 1px solid var(--line); }
+  .brand .logo { display: flex; align-items: center; gap: 10px; }
+  .brand .logo-mark {
+    width: 36px; height: 36px; border-radius: 9px; flex: none;
+    background: linear-gradient(135deg, #0b57d0, #3b82f6);
+    color: #fff; font-weight: 700; font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .brand h1 { font-size: 16px; line-height: 1.3; }
+  .brand .ver { font-size: 12px; color: var(--ink-3); }
+  .search-wrap { padding: 12px 16px 6px; }
+  .search-wrap input {
+    width: 100%; padding: 7px 12px; font-size: 13px;
+    border: 1px solid var(--line); border-radius: 8px; outline: none;
+    background: var(--bg); color: var(--ink);
+  }
+  .search-wrap input:focus { border-color: var(--accent); }
+  nav.side-nav { padding: 4px 10px 30px; }
+  .nav-group {
+    font-size: 11px; font-weight: 700; letter-spacing: .12em;
+    color: var(--ink-3); text-transform: uppercase;
+    padding: 16px 10px 6px;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px; margin: 1px 0;
+    border-radius: 8px; cursor: pointer;
+    color: var(--ink-2); font-size: 13.5px;
+    text-decoration: none; user-select: none;
+  }
+  .nav-item .num {
+    font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums;
+    min-width: 18px; text-align: right;
+  }
+  .nav-item:hover { background: var(--bg); color: var(--ink); }
+  .nav-item.active { background: var(--accent-weak); color: var(--accent); font-weight: 600; }
+  .nav-item.active .num { color: var(--accent); }
+
+  /* ================= 主区域 ================= */
+  .main { margin-left: var(--sidebar-w); min-height: 100vh; display: flex; flex-direction: column; }
+  .content { width: 100%; max-width: 1020px; margin: 0 auto; padding: 34px 36px 60px; flex: 1; }
+
+  .mobile-bar {
+    display: none; position: sticky; top: 0; z-index: 90;
+    background: var(--surface); border-bottom: 1px solid var(--line);
+    padding: 12px 16px; align-items: center; gap: 12px;
+  }
+  .mobile-bar button {
+    border: 1px solid var(--line); background: var(--bg); border-radius: 8px;
+    padding: 6px 12px; font-size: 14px; cursor: pointer;
+  }
+
+  .panel { display: none; animation: fadein .25s ease; }
+  .panel.active { display: block; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  .sec-title {
+    display: flex; align-items: baseline; gap: 12px;
+    font-size: 26px; font-weight: 700; margin-bottom: 6px; letter-spacing: -.01em;
+  }
+  .sec-title .idx { font-size: 14px; color: var(--ink-3); font-weight: 600; }
+  .sec-sub { color: var(--ink-3); font-size: 14px; margin-bottom: 22px; }
+  .panel h3 {
+    font-size: 17px; font-weight: 700; margin: 26px 0 10px;
+    padding-left: 12px; border-left: 4px solid var(--accent);
+  }
+  .panel p { margin: 8px 0; color: var(--ink-2); }
+  .panel p strong, .panel li strong { color: var(--ink); }
+  .panel ul, .panel ol { margin: 8px 0 8px 22px; color: var(--ink-2); }
+  .panel li { margin: 3px 0; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 22px 24px; margin: 14px 0;
+  }
+  .card > :first-child { margin-top: 0; }
+  .card > :last-child { margin-bottom: 0; }
+
+  /* 统计卡片（stat tiles） */
+  .stat-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px; margin: 18px 0 26px;
+  }
+  .stat {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 16px 18px 14px;
+  }
+  .stat .value { font-size: 30px; font-weight: 650; line-height: 1.15; }
+  .stat .label { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+  .stat .note { font-size: 11.5px; color: var(--ink-3); }
+
+  /* 功能特性网格 */
+  .feat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; margin: 16px 0; }
+  .feat {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 16px 18px;
+  }
+  .feat .feat-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .feat .ic { font-size: 19px; }
+  .feat b { font-size: 14.5px; }
+  .feat p { font-size: 13px; color: var(--ink-2); margin: 0; }
+
+  /* 表格 */
+  .tbl-wrap { overflow-x: auto; margin: 12px 0; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); background: var(--surface); }
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table.tbl th {
+    text-align: left; padding: 10px 14px; background: #f7f8fa;
+    color: var(--ink-2); font-weight: 600; font-size: 12.5px;
+    border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  table.tbl td { padding: 9px 14px; border-bottom: 1px solid #eef0f3; vertical-align: top; color: var(--ink-2); }
+  table.tbl tr:last-child td { border-bottom: none; }
+  table.tbl tbody tr:nth-child(even) { background: #fafbfc; }
+  table.tbl tbody tr:hover { background: var(--accent-weak); }
+  table.tbl td:first-child { white-space: nowrap; }
+  table.tbl .c-widen:first-child { white-space: normal; min-width: 150px; }
+
+  /* 代码 */
+  code.inline {
+    background: var(--code-bg); border: 1px solid #e2e6eb; border-radius: 5px;
+    padding: 1px 6px; font-size: 12.5px; color: #b03050; white-space: nowrap;
+  }
+  pre.code {
+    background: #22272e; color: #d6dde5; border-radius: 10px;
+    padding: 16px 18px; margin: 12px 0; overflow-x: auto;
+    font-size: 12.8px; line-height: 1.65;
+  }
+  pre.code .cm { color: #7a8899; }
+  pre.code .kw { color: #7cb7ff; }
+  pre.code .str { color: #a5d6a7; }
+  pre.code .hl { color: #ffcb6b; }
+
+  /* 徽章 */
+  .badge {
+    display: inline-block; padding: 1px 9px; border-radius: 99px;
+    font-size: 11.5px; font-weight: 600; line-height: 1.7; white-space: nowrap;
+    border: 1px solid transparent;
+  }
+  .b-blue   { background: var(--accent-weak); color: var(--accent); }
+  .b-green  { background: var(--green-weak);  color: var(--green); }
+  .b-orange { background: var(--orange-weak); color: var(--orange); }
+  .b-red    { background: var(--red-weak);    color: var(--red); }
+  .b-violet { background: var(--violet-weak); color: var(--violet); }
+  .b-gray   { background: #eef0f3; color: var(--ink-2); }
+
+  /* 提示块 */
+  .callout {
+    border-radius: 10px; padding: 13px 16px; margin: 12px 0;
+    font-size: 13.5px; border: 1px solid;
+  }
+  .callout.info  { background: var(--accent-weak); border-color: #c6dafc; color: #1e4b9e; }
+  .callout.warn  { background: var(--orange-weak); border-color: #f0dfa4; color: #7a5200; }
+  .callout.tip   { background: var(--green-weak);  border-color: #bfe5c9; color: #14602a; }
+
+  /* 启动流程管线图 */
+  .pipeline { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin: 16px 0; }
+  .pipe-node {
+    flex: 1 1 130px; min-width: 125px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; box-shadow: var(--shadow);
+    padding: 12px 12px 10px; position: relative; text-align: center;
+  }
+  .pipe-node b { display: block; font-size: 14px; margin-bottom: 3px; }
+  .pipe-node span { font-size: 11.5px; color: var(--ink-3); display: block; line-height: 1.5; }
+  .pipe-node::after {
+    content: "→"; position: absolute; right: -13px; top: 50%;
+    transform: translateY(-50%); color: var(--ink-3); font-size: 15px; z-index: 2;
+  }
+  .pipe-node:last-child::after { content: none; }
+
+  kbd.k {
+    background: var(--surface); border: 1px solid #cfd6de; border-bottom-width: 2px;
+    border-radius: 5px; padding: 0 6px; font-size: 12px; color: var(--ink);
+  }
+
+  .pager { display: flex; justify-content: space-between; gap: 12px; margin-top: 34px; }
+  .pager button {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: var(--shadow); padding: 10px 18px; font-size: 13.5px;
+    color: var(--ink-2); cursor: pointer;
+  }
+  .pager button:hover { border-color: var(--accent); color: var(--accent); }
+  .pager button:disabled { opacity: .35; cursor: default; }
+  .pager button:disabled:hover { border-color: var(--line); color: var(--ink-2); }
+
+  .doc-footer {
+    text-align: center; color: var(--ink-3); font-size: 12.5px;
+    padding: 22px 0 34px; border-top: 1px solid var(--line); margin-top: 20px;
+  }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } }
+
+  @media (max-width: 960px) {
+    .sidebar { transform: translateX(-100%); }
+    .sidebar.open { transform: none; box-shadow: 0 0 40px rgba(0,0,0,.18); }
+    .main { margin-left: 0; }
+    .mobile-bar { display: flex; }
+    .content { padding: 22px 16px 40px; }
+    .sec-title { font-size: 21px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 侧边栏 ================= -->
+<aside class="sidebar" id="sidebar">
+  <div class="brand">
+    <div class="logo">
+      <div class="logo-mark">UB</div>
+      <div>
+        <h1>U-Boot 功能全解析</h1>
+        <div class="ver">基于源码树 v2026.10 · GPL-2.0+</div>
+      </div>
+    </div>
+  </div>
+  <div class="search-wrap">
+    <input type="text" id="navFilter" placeholder="筛选章节…" autocomplete="off">
+  </div>
+  <nav class="side-nav" id="sideNav">
+    <div class="nav-group">总览</div>
+    <a class="nav-item active" data-tab="overview"><span class="num">01</span>项目概述</a>
+    <a class="nav-item" data-tab="structure"><span class="num">02</span>源码结构</a>
+
+    <div class="nav-group">启动体系</div>
+    <a class="nav-item" data-tab="bootflow"><span class="num">03</span>启动流程</a>
+    <a class="nav-item" data-tab="bootstd"><span class="num">04</span>标准启动 Bootflow</a>
+    <a class="nav-item" data-tab="images"><span class="num">05</span>镜像格式与启动命令</a>
+    <a class="nav-item" data-tab="efi"><span class="num">06</span>UEFI 支持</a>
+
+    <div class="nav-group">核心子系统</div>
+    <a class="nav-item" data-tab="cli"><span class="num">07</span>命令行 Shell</a>
+    <a class="nav-item" data-tab="env"><span class="num">08</span>环境变量</a>
+    <a class="nav-item" data-tab="dm"><span class="num">09</span>驱动模型 DM</a>
+    <a class="nav-item" data-tab="drivers"><span class="num">10</span>驱动子系统总览</a>
+    <a class="nav-item" data-tab="fs"><span class="num">11</span>文件系统</a>
+    <a class="nav-item" data-tab="net"><span class="num">12</span>网络功能</a>
+    <a class="nav-item" data-tab="storage"><span class="num">13</span>存储技术</a>
+
+    <div class="nav-group">功能特性</div>
+    <a class="nav-item" data-tab="flashing"><span class="num">14</span>下载与固件升级</a>
+    <a class="nav-item" data-tab="security"><span class="num">15</span>安全特性</a>
+    <a class="nav-item" data-tab="ui"><span class="num">16</span>交互界面</a>
+    <a class="nav-item" data-tab="debug"><span class="num">17</span>调试与诊断</a>
+    <a class="nav-item" data-tab="sandbox"><span class="num">18</span>沙箱与测试</a>
+
+    <div class="nav-group">附录</div>
+    <a class="nav-item" data-tab="build"><span class="num">19</span>构建系统</a>
+    <a class="nav-item" data-tab="cmdref"><span class="num">20</span>命令速查表</a>
+  </nav>
+</aside>
+
+<!-- ================= 主内容 ================= -->
+<div class="main">
+  <div class="mobile-bar">
+    <button id="menuBtn">☰ 目录</button>
+    <b style="font-size:14px;">U-Boot 2026.10 功能全解析</b>
+  </div>
+
+  <div class="content">
+
+  <!-- ============ 01 项目概述 ============ -->
+  <section class="panel active" id="overview">
+    <div class="sec-title"><span class="idx">01</span>项目概述</div>
+    <div class="sec-sub">U-Boot 是什么 · 版本概况 · 功能全景</div>
+
+    <div class="card">
+      <p><strong>U-Boot（Universal Boot Loader，通用引导加载器）</strong>是嵌入式领域应用最广泛的开源
+      Bootloader，由 DENX Software Engineering 的 Wolfgang Denk 于 2000 年发起，现由 U-Boot 社区维护，
+      遵循 <strong>GPL-2.0-or-later</strong> 许可证。它负责在操作系统（Linux、Android、OpenBSD 等）启动之前
+      完成硬件初始化，并把控制权移交给操作系统内核。</p>
+      <p>U-Boot 与 Linux 关系密切：部分源码直接源自 Linux 内核树，共享头文件，并专门为 Linux
+      镜像（zImage、FIT、设备树）的启动做了优化。它不仅是一个 Bootloader，还内置了一个功能完整的
+      <strong>Monitor（监控命令行）</strong>，可用于调试硬件、读写内存、更新固件、通过网络下载程序等。</p>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat"><div class="value">2026.10</div><div class="label">当前源码版本</div><div class="note">VERSION / PATCHLEVEL</div></div>
+      <div class="stat"><div class="value">12</div><div class="label">CPU 架构</div><div class="note">ARM / RISC-V / x86 等</div></div>
+      <div class="stat"><div class="value">1583</div><div class="label">板级默认配置</div><div class="note">configs/ 目录 defconfig</div></div>
+      <div class="stat"><div class="value">210</div><div class="label">命令实现文件</div><div class="note">cmd/ 目录 *.c</div></div>
+      <div class="stat"><div class="value">76</div><div class="label">驱动子系统</div><div class="note">drivers/ 一级 uclass</div></div>
+      <div class="stat"><div class="value">13</div><div class="label">文件系统</div><div class="note">ext4 / FAT / UBIFS 等</div></div>
+    </div>
+
+    <h3>功能全景</h3>
+    <div class="feat-grid">
+      <div class="feat"><div class="feat-head"><span class="ic">🚀</span><b>多阶段启动</b></div><p>BootROM → TPL/SPL → U-Boot → OS 的完整引导链，支持 MMC、NAND、SPI NOR、网络、USB、串口、Semihosting 等十余种加载介质。</p></div>
+      <div class="feat"><div class="feat-head"><span class="ic">🧭</span><b>标准启动（Standard Boot）</b></div><p>bootdev / bootmeth / bootflow 三层抽象自动扫描并启动系统，开箱即用地支持 extlinux、EFI、Android、PXE 等启动方式。</p></div>
+      <div class="feat"><div class="feat-head"><span class="ic">🖥️</span><b>UEFI 子系统</b></div><p>完整的 EFI Loader 实现：EFI 启动管理器、图形输出（GOP）、HTTP 启动、Capsule 固件升级、TCG2 度量启动，可直接引导 GRUB / Windows / 发行版安装器。</p></div>
+      <div class="feat"><div class="feat-head"><span class="ic">🧩</span><b>驱动模型（DM）</b></div><p>类似 Linux 的 uclass / driver / udevice 设备模型，设备树驱动绑定，76 个子系统覆盖从时钟电源到显示网络的完整外设栈。</p></div>
+      <div class="feat"><div class="feat-head"><span class="ic">🌐</span><b>网络协议栈</b></div><p>基于 lwIP 的网络栈，支持 DHCP(v4/v6)、TFTP、NFS、Ping、DNS、SNTP、HTTP(wget)、网络 Fastboot，并可用 pcap 抓包。</p></div>
+      <div class="feat"><div class="feat-head"><span class="ic">💾</span><b>文件系统</b></div><p>ext4、FAT/exFAT、SquashFS、EROFS、UBIFS、JFFS2、BTRFS、CRAMFS、ZFS、CBFS 等 13 种，统一的 ls / load / save 命令接口。</p></div>
+      <div class="feat"><div class="feat-head"><span class="ic">📦</span><b>下载与烧写</b></div><p>DFU（USB/UART）、Fastboot（USB/UDP/TCP）、UMS、Rockusb、Thor、Ymodem/Kermit 多种下载通道，配合 Capsule / FWU / RAUC 实现固件升级与回滚。</p></div>
+      <div class="feat"><div class="feat-head"><span class="ic">🔐</span><b>安全启动</b></div><p>FIT 签名验证（RSA/ECDSA）、VBE 验证启动、Android AVB、TPM 1.2/2.0、度量启动、EFI Secure Boot、OP-TEE 信任执行环境。</p></div>
+      <div class="feat"><div class="feat-head"><span class="ic">🎛️</span><b>交互界面</b></div><p>Hush Shell 脚本、bootmenu 启动菜单、expo/cedit 配置编辑器、开机 Logo（splash）、ANSI 彩色控制台。</p></div>
+      <div class="feat"><div class="feat-head"><span class="ic">🔍</span><b>调试与诊断</b></div><p>分级日志、bootstage 计时、函数 trace、KGDB、iotrace、事件系统、cyclic 后台任务、pstore、POST 上电自检。</p></div>
+      <div class="feat"><div class="feat-head"><span class="ic">🧪</span><b>沙箱与测试</b></div><p>Sandbox 架构把 U-Boot 当作 Linux 主机进程运行，配合单元测试（ut）、pytest 套件和 fuzz 模糊测试支撑 CI。</p></div>
+      <div class="feat"><div class="feat-head"><span class="ic">🛠️</span><b>构建与镜像工具</b></div><p>Kconfig 配置体系、1583 个 defconfig、binman 镜像打包、mkimage/dumpimage 等主机工具、dtoc 设备树代码生成。</p></div>
+    </div>
+
+    <h3>设计理念</h3>
+    <div class="card">
+      <ul>
+        <li><strong>可配置、可裁剪</strong>：几乎所有功能都由 <code class="inline">CONFIG_*</code> 选项控制，通过 Kconfig 裁剪出从几 KB 的 SPL 到功能齐全的完整固件。</li>
+        <li><strong>易于扩展</strong>：所有 Monitor 命令使用统一的调用接口（<code class="inline">U_BOOT_CMD</code> 宏），新增命令只需一个 C 文件。</li>
+        <li><strong>动态加载</strong>：很少使用的代码（如硬件测试程序）可作为独立应用动态加载执行（<code class="inline">go</code> 命令 + 导出 API）。</li>
+        <li><strong>贴近 Linux</strong>：与 Linux 共享驱动模型思想、设备树格式、镜像格式，方便代码移植与生态复用。</li>
+      </ul>
+    </div>
+
+    <div class="callout info">
+      💡 本文档基于 <strong>/home/zhp/code/u-boot-v2026.10</strong> 源码树分析生成，目录、命令与统计数据均来自该版本实际代码。
+    </div>
+    <div class="pager">
+      <button disabled>← 上一章</button>
+      <button data-go="structure">下一章：源码结构 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 02 源码结构 ============ -->
+  <section class="panel" id="structure">
+    <div class="sec-title"><span class="idx">02</span>源码结构</div>
+    <div class="sec-sub">顶层目录一览 · 各目录职责</div>
+
+    <div class="card">
+      <p>U-Boot 顶层源码树组织如下（均针对本源码树 v2026.10 实际统计）：</p>
+    </div>
+
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>目录 / 文件</th><th>职责说明</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">api/</code></td><td>独立应用程序 API（导出函数表），供 <code class="inline">go</code> 加载的 standalone 程序调用</td></tr>
+        <tr><td><code class="inline">arch/</code></td><td>架构相关代码：arm、riscv、x86、powerpc、mips、microblaze、nios2、m68k、arc、sh、xtensa、sandbox 共 12 种</td></tr>
+        <tr><td><code class="inline">board/</code></td><td>213 个厂商/板级目录，包含各开发板的初始化与引脚配置</td></tr>
+        <tr><td><code class="inline">boot/</code></td><td>启动框架：标准启动（bootdev/bootmeth/bootflow）、bootm、FIT 镜像、VBE 验证启动、expo 界面、UPL</td></tr>
+        <tr><td><code class="inline">cmd/</code></td><td>210 个命令实现文件（md、mmc、dhcp、fastboot…），全部通过 U_BOOT_CMD 宏注册</td></tr>
+        <tr><td><code class="inline">common/</code></td><td>通用逻辑：主循环 main.c、板级初始化序列 board_f/board_r、SPL、CLI 解析器、autoboot、日志、菜单、事件</td></tr>
+        <tr><td><code class="inline">configs/</code></td><td>1583 个板级默认配置（defconfig）</td></tr>
+        <tr><td><code class="inline">disk/</code></td><td>分区表支持：MBR、GPT、ISO9660 等</td></tr>
+        <tr><td><code class="inline">doc/</code></td><td>Sphinx 文档（开发指南、驱动说明、板卡支持列表）</td></tr>
+        <tr><td><code class="inline">drivers/</code></td><td>76 个驱动子系统（clk、mmc、net、video、tpm…），核心设备模型在 drivers/core</td></tr>
+        <tr><td><code class="inline">dts/</code></td><td>设备树基础设施与 include 骨架</td></tr>
+        <tr><td><code class="inline">env/</code></td><td>环境变量后端：flash、MMC、FAT、ext4、UBI、EEPROM、NVRAM、远程等十余种存储介质</td></tr>
+        <tr><td><code class="inline">examples/</code></td><td>示例程序：standalone 独立程序（hello_world）与 API 使用示例</td></tr>
+        <tr><td><code class="inline">fs/</code></td><td>13 种文件系统实现及统一 FS API（fs/fs.c）</td></tr>
+        <tr><td><code class="inline">include/</code></td><td>全部公共头文件（u-boot.h、command.h、asm/ 架构头、dt-bindings 等）</td></tr>
+        <tr><td><code class="inline">lib/</code></td><td>通用库：加密（mbedtls、RSA、AES）、压缩（zlib、lzma、zstd、bzip2）、efi_loader（UEFI 子系统）、libfdt、lwip 等</td></tr>
+        <tr><td><code class="inline">net/</code></td><td>网络栈：lwIP 集成、DHCP、TFTP、NFS、DNS、ping、wget、fastboot 网络变体</td></tr>
+        <tr><td><code class="inline">post/</code></td><td>上电自检（Power-On Self Test）框架</td></tr>
+        <tr><td><code class="inline">scripts/</code></td><td>构建脚本（Kbuild、checkpatch、get_maintainer.pl 等）</td></tr>
+        <tr><td><code class="inline">test/</code></td><td>单元测试与 test/py pytest 集成测试套件</td></tr>
+        <tr><td><code class="inline">tools/</code></td><td>主机工具：mkimage、dumpimage、binman、buildman、patman、env 工具等</td></tr>
+        <tr><td><code class="inline">Kconfig / Makefile</code></td><td>顶层 Kbuild 构建描述与配置入口</td></tr>
+        <tr><td><code class="inline">MAINTAINERS</code></td><td>子系统与板卡维护者登记表</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="callout info">
+      💡 查找某块开发板的维护者：<code class="inline">scripts/get_maintainer.pl &lt;path&gt;</code>；官方邮件列表 u-boot@lists.u-boot-project.org。
+    </div>
+    <div class="pager">
+      <button data-go="overview">← 上一章：项目概述</button>
+      <button data-go="bootflow">下一章：启动流程 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 03 启动流程 ============ -->
+  <section class="panel" id="bootflow">
+    <div class="sec-title"><span class="idx">03</span>启动流程</div>
+    <div class="sec-sub">从复位到操作系统 · SPL/TPL · 初始化序列 · 自动启动</div>
+
+    <h3>多阶段引导链</h3>
+    <div class="pipeline">
+      <div class="pipe-node"><b>BootROM</b><span>芯片内置 ROM<br>加载第一阶段</span></div>
+      <div class="pipe-node"><b>TPL</b><span>可选<br>DRAM 初始化</span></div>
+      <div class="pipe-node"><b>SPL</b><span>精简一级加载器<br>初始化基础外设</span></div>
+      <div class="pipe-node"><b>U-Boot</b><span>主体<br>Monitor 命令行</span></div>
+      <div class="pipe-node"><b>OS</b><span>Linux / Android<br>EFI 程序等</span></div>
+    </div>
+
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>阶段</th><th>说明</th><th>典型大小</th></tr></thead>
+      <tbody>
+        <tr><td>BootROM</td><td>SoC 出厂固化的代码，从 BootROM 支持的介质（eMMC boot 分区、SPI NOR、SD、USB FEL/OTG、UART、NAND）读入第一阶段固件，通常还完成校验（如 i.MX 的 HAB）</td><td>—</td></tr>
+        <tr><td>TPL</td><td>（Third Program Loader，可选）在 DRAM 尚不可用的平台上先做 DRAM 训练与初始化，常见于 Rockchip、部分 i.MX8 平台</td><td>几十 KB</td></tr>
+        <tr><td>SPL</td><td>（Secondary Program Loader）SRAM 中运行的精简加载器：初始化时钟、DRAM、早期串口，然后从 MMC/NAND/SPI NOR/USB/网络/SATA/Ymodem/Semihosting/DFU 等介质加载 U-Boot 主体，支持 FIT 格式与签名验证</td><td>32–256 KB</td></tr>
+        <tr><td>U-Boot 主体</td><td>完整功能：重定位（relocation）到 DRAM 高地址、初始化全部外设、进入 Monitor 命令行或自动启动操作系统</td><td>数百 KB ~ 数 MB</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>主体内部初始化序列</h3>
+    <div class="card">
+      <p>U-Boot 主体的初始化分两段执行，由函数指针数组驱动的<strong>初始化序列</strong>完成，便于裁剪：</p>
+      <ul>
+        <li><code class="inline">init_sequence_f</code>（<code class="inline">common/board_f.c</code>）——<strong>重定位前</strong>：早期串口、DRAM 大小探测、板级早期初始化（<code class="inline">board_early_init_f</code>）、预留重定位后的内存布局（malloc 区、帧缓冲、设备树、内核预留区）。</li>
+        <li><code class="inline">init_sequence_r</code>（<code class="inline">common/board_r.c</code>）——<strong>重定位后</strong>：串口全量初始化、事件、日志、环境变量加载、MMC/NAND/网络等设备枚举、中断、设备树激活，最后进入 <code class="inline">main_loop()</code>。</li>
+      </ul>
+      <p><strong>重定位（Relocation）</strong>是 U-Boot 的特色设计：代码先在加载地址运行，之后把自身整体搬移到 DRAM 高端并按偏移修正符号，从而把低地址空间完整让给操作系统内核。</p>
+    </div>
+
+    <h3>main_loop 与自动启动</h3>
+    <div class="card">
+      <p>进入 <code class="inline">main_loop()</code>（<code class="inline">common/main.c</code>，实现在 <code class="inline">common/autoboot.c</code> 的 <code class="inline">autoboot_command()</code>）后：</p>
+      <ol>
+        <li>倒计时 <code class="inline">bootdelay</code> 秒（默认 2 秒，可设 0 或 -2 禁止打断）；</li>
+        <li>倒计时内按任意键进入 <strong>Monitor 命令行</strong>（可配置加密密码：<code class="inline">CONFIG_AUTOBOOT_KEYED</code>）；</li>
+        <li>超时自动执行 <code class="inline">bootcmd</code> 环境变量中的命令串；</li>
+        <li><code class="inline">preboot</code> 变量在 bootcmd 之前执行，可用于显示开机 Logo；</li>
+        <li>失败回滚：<code class="inline">bootcount</code> 计数持久保存，超过 <code class="inline">bootlimit</code> 次后改执行 <code class="inline">altbootcmd</code> 备用启动命令（A/B 升级场景的保命机制）。</li>
+      </ol>
+    </div>
+
+    <h3>SPL 支持的加载介质</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>介质</th><th>实现（common/spl/）</th></tr></thead>
+      <tbody>
+        <tr><td>MMC / SD / eMMC</td><td><code class="inline">spl_mmc.c</code></td></tr>
+        <tr><td>NAND / SPI NAND</td><td><code class="inline">spl_nand.c</code></td></tr>
+        <tr><td>SPI NOR / NOR Flash</td><td><code class="inline">spl_spi.c</code> / <code class="inline">spl_nor.c</code></td></tr>
+        <tr><td>USB（DFU / FEL）</td><td><code class="inline">spl_usb.c</code> / <code class="inline">spl_dfu.c</code></td></tr>
+        <tr><td>UART / Ymodem</td><td><code class="inline">spl_ymodem.c</code></td></tr>
+        <tr><td>网络（TFTP / DHCP）</td><td><code class="inline">spl_net.c</code></td></tr>
+        <tr><td>SATA</td><td><code class="inline">spl_sata.c</code></td></tr>
+        <tr><td>Semihosting（调试器主机 FS）</td><td><code class="inline">spl_semihosting.c</code></td></tr>
+        <tr><td>FAT / ext4 文件系统</td><td><code class="inline">spl_fs_fat.c</code> / <code class="inline">spl_fs_ext4.c</code></td></tr>
+        <tr><td>RAM / NOR 直接执行</td><td><code class="inline">spl_ram.c</code></td></tr>
+      </tbody>
+    </table></div>
+    <div class="pager">
+      <button data-go="structure">← 上一章：源码结构</button>
+      <button data-go="bootstd">下一章：标准启动 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 04 标准启动 ============ -->
+  <section class="panel" id="bootstd">
+    <div class="sec-title"><span class="idx">04</span>标准启动 Bootflow</div>
+    <div class="sec-sub">bootdev · bootmeth · bootflow 三层自动启动框架</div>
+
+    <div class="card">
+      <p><strong>标准启动（Standard Boot，bootstd）</strong>是 v2022.10 引入、如今默认的启动框架，目标是取代以往每块板各写一套
+      <code class="inline">bootcmd</code> 脚本的做法：U-Boot 自动按<strong>启动顺序</strong>扫描各个<strong>启动设备</strong>，
+      尝试每种<strong>启动方法</strong>，找到第一个可用的<strong>启动流</strong>并执行，全程无需手写脚本。</p>
+    </div>
+
+    <h3>三个核心概念</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>概念</th><th>uclass</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td><b>bootdev</b> 启动设备</td><td><code class="inline">UCLASS_BOOTDEV</code></td><td>"从哪里启动"：MMC、网络、USB、SCSI、VBE、EFI 介质等，每个存储设备可派生一个 bootdev</td></tr>
+        <tr><td><b>bootmeth</b> 启动方法</td><td><code class="inline">UCLASS_BOOTMETH</code></td><td>"怎么启动"：解析 extlinux.conf、扫描 EFI ESP、执行 boot.scr、PXE 网络启动、Android boot.img 等</td></tr>
+        <tr><td><b>bootflow</b> 启动流</td><td>软件对象</td><td>"一次启动尝试"：某 bootdev + 某 bootmeth 找到的完整启动方案（含内核、设备树、initrd 的加载地址）</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>bootmeth 一览（boot/ 目录 v2026.10）</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>启动方法</th><th>源文件</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>extlinux</td><td><code class="inline">bootmeth_extlinux.c</code></td><td>读取 <code class="inline">/boot/extlinux/extlinux.conf</code>（ syslinux 兼容格式），启动 Linux 最简单可靠的方式</td></tr>
+        <tr><td>EFI（磁盘）</td><td><code class="inline">bootmeth_efi.c</code></td><td>扫描 GPT ESP 分区 <code class="inline">/EFI/*/BOOT*.EFI</code>，按 BootOrder 启动 GRUB 等 EFI 程序</td></tr>
+        <tr><td>EFI 管理器</td><td><code class="inline">bootmeth_efi_mgr</code></td><td>完全交给 EFI Boot Manager 决定启动项</td></tr>
+        <tr><td>script</td><td><code class="inline">bootmeth_script.c</code></td><td>加载并执行 <code class="inline">boot.scr</code> / <code class="inline">boot.scr.uimg</code> U-Boot 脚本（兼容旧启动方式）</td></tr>
+        <tr><td>PXE</td><td><code class="inline">bootmeth_pxe.c</code></td><td>网络 PXE 启动， DHCP + TFTP 获取 pxelinux 格式配置</td></tr>
+        <tr><td>Android</td><td><code class="inline">bootmeth_android.c</code></td><td>解析 Android boot.img（boot/vendor_boot/vbmeta/dtbo），配合 AVB 验证与 A/B 槽位</td></tr>
+        <tr><td>ChromeOS</td><td><code class="inline">bootmeth_cros.c</code></td><td>解析 ChromeOS 内核分区格式</td></tr>
+        <tr><td>qfw</td><td><code class="inline">bootmeth_qfw.c</code></td><td>QEMU firmware（qfw）提供的直接内核入口</td></tr>
+        <tr><td>RAUC</td><td><code class="inline">bootmeth_rauc.c</code></td><td>读取 RAUC 佩标记（slot 状态文件）选择 A/B 槽位启动</td></tr>
+        <tr><td>sandbox</td><td><code class="inline">bootmeth_sandbox.c</code></td><td>沙箱测试专用</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>启动顺序与 hunter 机制</h3>
+    <div class="card">
+      <p>扫描顺序由环境变量 <code class="inline">boot_targets</code> 决定（默认形如
+      <code class="inline">mmc0 mmc1 mmc2 usb0 pxe dhcp</code>），也可用 <code class="inline">boot_order()</code>
+      按 uclass 优先级自动推导。<strong>hunter（猎人）</strong>机制会在扫描时按需枚举总线上新出现的设备
+      （例如扫描到 usb bootdev 前先做 USB 总线枚举），无需提前初始化所有外设，加快冷启动速度。</p>
+    </div>
+
+    <h3>常用命令</h3>
+    <pre class="code"><span class="cm"># 扫描所有启动设备并列出找到的启动流</span>
+=&gt; bootflow scan
+=&gt; bootflow list
+Seq  Method           State   Uclass    Part  Name                      Comment
+---  ---------------  ------  --------  ----  ------------------------  -------
+  0  extlinux         ready   mmc          2  mmc@fe320000.bootflow...  Debian 12
+
+<span class="cm"># 交互式选择并启动</span>
+=&gt; bootflow select 0
+=&gt; bootflow boot
+
+<span class="cm"># 查看启动方法与启动设备</span>
+=&gt; bootmeth list
+=&gt; bootdev list
+
+<span class="cm"># 一键自动启动（等价于默认 bootcmd 行为）</span>
+=&gt; bootflow boot &lt;序号&gt;</pre>
+
+    <h3>extlinux.conf 示例</h3>
+    <pre class="code"><span class="cm"># /boot/extlinux/extlinux.conf —— 标准启动最常用的入口</span>
+label Debian GNU/Linux 12 (bookworm)
+    kernel /boot/vmlinuz-6.1.0-12-arm64
+    initrd /boot/initrd.img-6.1.0-12-arm64
+    fdt    /boot/dtbs/rockchip/rk3588-evb1-v10.dtb
+    append  root=UUID=... rw console=ttyS2,1500000</pre>
+
+    <div class="callout tip">
+      ✅ 推荐做法：新板优先使用标准启动 + extlinux.conf 或 EFI，而非手写 bootcmd 脚本；特殊需求再通过
+      script bootmeth 的 boot.scr 过渡。
+    </div>
+    <div class="pager">
+      <button data-go="bootflow">← 上一章：启动流程</button>
+      <button data-go="images">下一章：镜像格式与启动命令 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 05 镜像格式与启动命令 ============ -->
+  <section class="panel" id="images">
+    <div class="sec-title"><span class="idx">05</span>镜像格式与启动命令</div>
+    <div class="sec-sub">bootm / booti / bootz / bootefi · FIT · Android 镜像 · 设备树</div>
+
+    <h3>四大启动命令</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>命令</th><th>目标格式</th><th>典型用法</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">bootm</code></td><td>legacy uImage 与 FIT 镜像（mkimage 打包）</td><td><code class="inline">bootm ${kernel_addr_r} ${ramdisk} ${fdt_addr_r}</code></td></tr>
+        <tr><td><code class="inline">booti</code></td><td>ARM64 原始 Image（无头）</td><td><code class="inline">booti ${kernel_addr_r} ${initrd_addr_r} ${fdt_addr_r}</code></td></tr>
+        <tr><td><code class="inline">bootz</code></td><td>ARM32 压缩 zImage</td><td><code class="inline">bootz ${kernel_addr_r} - ${fdt_addr_r}</code></td></tr>
+        <tr><td><code class="inline">bootefi</code></td><td>EFI PE/COFF 可执行文件（GRUB、EFI 应用）</td><td><code class="inline">bootefi ${kernel_addr_r} ${fdt_addr_r}</code>，或 <code class="inline">bootefi bootmgr</code></td></tr>
+      </tbody>
+    </table></div>
+    <p>辅助命令：<code class="inline">iminfo</code> 校验镜像头与 CRC，<code class="inline">imxtract</code> 从多文件镜像提取子镜像，
+    <code class="inline">source</code> 执行脚本镜像（boot.scr），<code class="inline">bootm prep</code> 只做准备不跳转。</p>
+
+    <h3>镜像格式对比</h3>
+    <div class="tbl-wrap"><table class="tbl c-widen">
+      <thead><tr><th>格式</th><th>扩展名</th><th>组成</th><th>特性</th></tr></thead>
+      <tbody>
+        <tr><td>legacy uImage</td><td>.uimg / .bin</td><td>64 字节头 + 数据</td><td>单文件、CRC 校验，最古老格式</td></tr>
+        <tr><td><b>FIT（Flattened Image Tree）</b></td><td>.itb</td><td>设备树结构组织多组件（内核 / initrd / FDT / 多套配置）</td><td>多文件一体、可选配置、支持 RSA/ECDSA 签名与 AES 加密，<span class="badge b-green">推荐</span></td></tr>
+        <tr><td>Android boot image</td><td>boot.img</td><td>header + kernel + ramdisk + dtb（v2）；v3/v4 拆分 vendor_boot</td><td>配合 fastboot / AVB / A/B 使用</td></tr>
+        <tr><td>script 镜像</td><td>boot.scr.uimg</td><td>脚本文本打包 mkimage 头</td><td>由 <code class="inline">source</code> 执行</td></tr>
+        <tr><td>raw / zImage</td><td>Image / zImage</td><td>无头内核二进制</td><td>booti / bootz 直接启动</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>FIT：.its 描述文件</h3>
+    <pre class="code"><span class="cm">/* kernel.its —— 用 mkimage -f kernel.its kernel.itb 打包 */</span>
+/dts-v1/;
+/ {
+    description = <span class="str">"FIT 镜像: 内核 + initrd + 两块板的设备树"</span>;
+    #address-cells = &lt;1&gt;;
+    images {
+        kernel-1 {
+            description = <span class="str">"Linux 6.12"</span>;
+            data = /incbin/(<span class="str">"Image.gz"</span>);
+            type = <span class="str">"kernel"</span>; arch = <span class="str">"arm64"</span>;
+            os = <span class="str">"linux"</span>; compression = <span class="str">"gzip"</span>;
+            load = &lt;0x40200000&gt;; entry = &lt;0x40200000&gt;;
+            hash-1 { algo = <span class="str">"sha256"</span>; };
+        };
+        fdt-evb { ... };  <span class="cm">/* 设备树与 initrd 同理 */</span>
+    };
+    configurations {
+        default = <span class="str">"conf-evb"</span>;
+        conf-evb {
+            kernel = <span class="str">"kernel-1"</span>; fdt = <span class="str">"fdt-evb"</span>;
+            <span class="cm">/* 打开 CONFIG_FIT_SIGNATURE 后按签名选择可信配置 */</span>
+        };
+    };
+};</pre>
+
+    <h3>主机端工具</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>工具（tools/）</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">mkimage</code></td><td>打包 legacy 镜像与 FIT（.its → .itb）、生成 boot.scr</td></tr>
+        <tr><td><code class="inline">dumpimage</code></td><td>列出/提取镜像组件，校验签名</td></tr>
+        <tr><td><code class="inline">fit_check_sign</code></td><td>主机端验证 FIT 签名</td></tr>
+        <tr><td><code class="inline">mkimage -l</code></td><td>查看镜像头信息</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>设备树（FDT）与启动参数</h3>
+    <div class="card">
+      <ul>
+        <li>ARM64 强制使用设备树：<code class="inline">fdt addr ${fdt_addr_r}</code> 设定地址，<code class="inline">fdt resize</code> 扩容、<code class="inline">fdt set /memory reg ...</code> 修改节点、<code class="inline">fdt print</code> 打印树。</li>
+        <li>内核命令行由环境变量 <code class="inline">bootargs</code> 传入（如 <code class="inline">console=ttyS0,115200 root=/dev/mmcblk1p2 rw</code>）。</li>
+        <li>标准加载地址变量（distro 约定）：<code class="inline">kernel_addr_r</code>、<code class="inline">fdt_addr_r</code>、<code class="inline">ramdisk_addr_r</code>、<code class="inline">scriptaddr</code>、<code class="inline">pxefile_addr_r</code>。</li>
+        <li>Android：用 <code class="inline">abootimg</code> 命令解析 boot.img 头、提取 ramdisk/内核，<code class="inline">bcb</code> 命令读写 Android 启动控制块（bootloader 消息、A/B 槽位切换）。</li>
+      </ul>
+    </div>
+    <div class="pager">
+      <button data-go="bootstd">← 上一章：标准启动</button>
+      <button data-go="efi">下一章：UEFI 支持 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 06 UEFI ============ -->
+  <section class="panel" id="efi">
+    <div class="sec-title"><span class="idx">06</span>UEFI 支持</div>
+    <div class="sec-sub">lib/efi_loader · EFI 启动管理器 · Capsule 升级 · 度量启动</div>
+
+    <div class="card">
+      <p>U-Boot 实现了完整的 <strong>UEFI（统一可扩展固件接口）子系统</strong>（<code class="inline">lib/efi_loader/</code>，
+      100+ 源文件），具有双重身份：</p>
+      <ul>
+        <li><strong>EFI 宿主（host）</strong>：加载并运行 EFI 应用——GRUB、systemd-boot、Windows 安装器、Linux 发行版安装介质、EFI Shell 程序等；</li>
+        <li><strong>EFI 载荷（payload）</strong>：自身可作为 coreboot / EDK2 / SlimBootloader 之后的 EFI payload 运行（<code class="inline">CONFIG_EFI_APP</code>，lib/efi_client）。</li>
+      </ul>
+    </div>
+
+    <h3>实现的 EFI 协议与服务</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>能力</th><th>说明</th><th>相关 CONFIG / 命令</th></tr></thead>
+      <tbody>
+        <tr><td>启动管理</td><td>EFI 变量 Boot####/BootOrder，按 ESP 分区 <code class="inline">/EFI/…/*.efi</code> 启动</td><td><code class="inline">CONFIG_EFI_BOOTMGR</code> · <code class="inline">efidebug boot</code></td></tr>
+        <tr><td>块设备</td><td>EFI_BLOCK_IO_PROTOCOL：块设备与分区映射为 EFI 设备路径</td><td><code class="inline">efi_disk.c</code></td></tr>
+        <tr><td>简单文件系统</td><td>FAT/exFAT/ext2 ESP 分区作为 EFI_SIMPLE_FILE_SYSTEM</td><td><code class="inline">efi_file.c</code></td></tr>
+        <tr><td>图形输出</td><td>GOP 图形协议（帧缓冲），安装器图形界面的基础</td><td><code class="inline">efi_gop.c</code></td></tr>
+        <tr><td>网络</td><td>简单网络协议 SNP + EFI_NETWORK，支持 EFI HTTP Boot 网络安装</td><td><code class="inline">efi_net.c</code> · <code class="inline">efi_http.c</code></td></tr>
+        <tr><td>LoadFile2 initrd</td><td>Linux initrd 通过 Load File2 协议注入</td><td><code class="inline">efi_load_initrd.c</code></td></tr>
+        <tr><td>Capsule 固件升级</td><td>磁盘 Capsule（CapsuleApp 更新包）+ ESRT 表 + 状态报告</td><td><code class="inline">CONFIG_EFI_CAPSULE_ON_DISK</code> · <code class="inline">efidebug capsule</code></td></tr>
+        <tr><td>度量启动</td><td>EFI_TCG2_PROTOCOL：把启动镜像哈希扩展进 TPM PCR，生成事件日志</td><td><code class="inline">CONFIG_MEASURED_BOOT</code></td></tr>
+        <tr><td>安全启动</td><td>PK/KEK/db/dbx 认证变量，X.509 证书验证 EFI 程序签名</td><td><code class="inline">CONFIG_EFI_SECURE_BOOT</code></td></tr>
+        <tr><td>变量服务</td><td>EFI 变量存于 U-Boot 环境变量区，支持认证变量（time-based）</td><td><code class="inline">efi_setup.c</code></td></tr>
+        <tr><td>HII 界面</td><td>人机接口基础（字体、字符串、表单），供 EFI 程序绘制设置界面</td><td><code class="inline">efi_hii*.c</code></td></tr>
+        <tr><td>RNG</td><td>EFI 随机数协议（对接硬件 RNG）</td><td><code class="inline">efi_rng.c</code></td></tr>
+        <tr><td>驱动模型绑定</td><td>EFI_DRIVER_BINDING：用 U-Boot 驱动支撑 EFI 设备</td><td><code class="inline">lib/efi_driver/</code></td></tr>
+        <tr><td>自检</td><td>EFI 自测套件</td><td><code class="inline">bootefi selftest</code></td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>交互方式</h3>
+    <pre class="code"><span class="cm"># 菜单式 EFI 配置界面（无需命令行知识）</span>
+=&gt; eficonfig          <span class="cm"># 添加/删除启动项、改变启动顺序、生成 BootOrder</span>
+
+<span class="cm"># 命令式调试</span>
+=&gt; efidebug boot add -b 3 <span class="str">"Debian"</span> mmc 0:1 /EFI/debian/grubaa64.efi
+=&gt; efidebug boot order 3
+=&gt; bootefi bootmgr     <span class="cm"># 交给 EFI 启动管理器执行 BootOrder</span>
+
+<span class="cm"># 直接运行一个 EFI 程序</span>
+=&gt; load mmc 0:1 ${kernel_addr_r} /EFI/BOOT/BOOTAA64.EFI
+=&gt; bootefi ${kernel_addr_r} ${fdt_addr_r}</pre>
+
+    <div class="callout info">
+      💡 配置了 EFI Boot Manager 后，标准启动的 <b>efi / efi_mgr</b> bootmeth 会自动接管启动流程，
+      USB / 网络安装 Debian、Windows 等发行版即可开箱即用。
+    </div>
+    <div class="pager">
+      <button data-go="images">← 上一章：镜像格式与启动命令</button>
+      <button data-go="cli">下一章：命令行 Shell →</button>
+    </div>
+  </section>
+
+  <!-- ============ 07 CLI ============ -->
+  <section class="panel" id="cli">
+    <div class="sec-title"><span class="idx">07</span>命令行 Shell</div>
+    <div class="sec-sub">Monitor 命令行 · Hush 脚本解释器 · 交互特性</div>
+
+    <h3>命令框架</h3>
+    <div class="card">
+      <p>所有 U-Boot 命令通过 <code class="inline">U_BOOT_CMD()</code> 宏注册进命令表
+      （<code class="inline">common/command.c</code>），统一签名 <code class="inline">int cmd(struct cmd_tbl *cmd, int flag, int argc, char *argv[])</code>，
+      支持 <code class="inline">help</code>/<code class="inline">?</code> 自动生成帮助。任何 C 文件放进 <code class="inline">cmd/</code> 并改 Makefile 即可新增命令——这是 U-Boot 高度可扩展的基础。</p>
+    </div>
+
+    <h3>三种命令解释器</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>解释器</th><th>实现</th><th>特点</th></tr></thead>
+      <tbody>
+        <tr><td>简单解析器</td><td><code class="inline">common/cli_simple.c</code></td><td>最小体积：逐条执行、<code class="inline">;</code> 分隔、<code class="inline">run</code> 变量，无控制流</td></tr>
+        <tr><td>Hush（legacy）</td><td><code class="inline">common/cli_hush.c</code></td><td>类 POSIX shell：if/else、for/while、变量替换、&amp;&amp;/||、通配</td></tr>
+        <tr><td>Hush modern</td><td><code class="inline">common/cli_hush_modern.c</code>（同步上游 busybox hush：<code class="inline">cli_hush_upstream.c</code>）</td><td><span class="badge b-blue">新默认</span> 与 BusyBox hush 上游对齐，行为更接近 bash</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>交互特性</h3>
+    <div class="card">
+      <ul>
+        <li>命令行编辑：光标移动、插入删除（<code class="inline">CONFIG_CMDLINE_EDITING</code>）；</li>
+        <li>历史记录：↑↓ 翻阅历史命令（<code class="inline">CONFIG_CMD_HISTORY</code>）；</li>
+        <li>Tab 自动补全命令与部分参数（<code class="inline">CONFIG_AUTO_COMPLETE</code>）；</li>
+        <li><kbd class="k">Ctrl</kbd>+<kbd class="k">C</kbd> 中断长命令（如 ping、mtest）；</li>
+        <li>多控制台：stdin/stdout/stderr 环境变量可同时绑定串口、显示卡、USB 键盘。</li>
+      </ul>
+    </div>
+
+    <h3>脚本能力（Hush）</h3>
+    <pre class="code"><span class="cm"># 条件与循环</span>
+=&gt; if test ${bootcount} -gt 3; then echo <span class="str">"fallback"</span>; run rescue; fi
+=&gt; for i in 1 2 3; do mmc dev $i; mmc info; done
+
+<span class="cm"># 变量与命令替换</span>
+=&gt; setenv part 2
+=&gt; load mmc 0:${part} ${kernel_addr_r} Image   <span class="cm"># 嵌入变量</span>
+
+<span class="cm"># 逻辑串联</span>
+=&gt; dhcp &amp;&amp; tftpboot ${fdt_addr_r} board.dtb &amp;&amp; booti ${kernel_addr_r} - ${fdt_addr_r}
+
+<span class="cm"># 把脚本存成环境变量批量执行</span>
+=&gt; setenv bootcmd <span class="str">"mmc dev 0; load ...; booti ..."</span>
+=&gt; run bootcmd
+
+<span class="cm"># 从文件系统执行脚本镜像（boot.scr 由 mkimage 打包）</span>
+=&gt; load mmc 0:1 ${scriptaddr} /boot.scr
+=&gt; source ${scriptaddr}</pre>
+
+    <div class="callout warn">
+      ⚠️ 脚本中的字符串比较用 <code class="inline">test "$x" = "y"</code>，整数比较用 <code class="inline">itest $a -eq $b</code>；
+      简单解析器不支持控制流，写复杂脚本前先确认启用的是 hush 解释器。
+    </div>
+    <div class="pager">
+      <button data-go="efi">← 上一章：UEFI 支持</button>
+      <button data-go="env">下一章：环境变量 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 08 环境变量 ============ -->
+  <section class="panel" id="env">
+    <div class="sec-title"><span class="idx">08</span>环境变量</div>
+    <div class="sec-sub">键值数据库 · 14 种存储后端 · 回调与保护机制</div>
+
+    <div class="card">
+      <p>环境变量（environment）是 U-Boot 的"配置数据库"：键值对形式的文本块（默认 8KB /
+      <code class="inline">CONFIG_ENV_SIZE</code>），保存启动脚本、网络参数、板卡配置等。所有启动行为几乎都由它驱动，
+      修改后 <code class="inline">saveenv</code> 持久化到介质，无需重新烧写固件。</p>
+    </div>
+
+    <h3>存储后端（env/ 目录）</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>后端</th><th>源文件</th><th>典型场景</th></tr></thead>
+      <tbody>
+        <tr><td>nowhere</td><td><code class="inline">env/nowhere.c</code></td><td>只读，仅默认环境（最小系统 / SPL）</td></tr>
+        <tr><td>embedded</td><td><code class="inline">env/embedded.c</code></td><td>编译进镜像的只读默认环境</td></tr>
+        <tr><td>parallel NOR flash</td><td><code class="inline">env/flash.c</code></td><td>经典 NOR 保存</td></tr>
+        <tr><td>SPI NOR</td><td><code class="inline">env/sf.c</code></td><td>sf 环境扇区</td></tr>
+        <tr><td>MMC / SD / eMMC</td><td><code class="inline">env/mmc.c</code></td><td>专用裸分区或 FAT 文件</td></tr>
+        <tr><td>FAT / ext4</td><td><code class="inline">env/fat.c</code> · <code class="inline">env/ext4.c</code></td><td>"uboot.env" 文件，主机可直接改</td></tr>
+        <tr><td>raw NAND（含冗余）</td><td><code class="inline">env/nand.c</code></td><td>双份带 ECC 与冗余标志</td></tr>
+        <tr><td>UBI 卷</td><td><code class="inline">env/ubi.c</code></td><td>磨损均衡的 UBI 卷保存</td></tr>
+        <tr><td>EEPROM</td><td><code class="inline">env/eeprom.c</code></td><td>I2C EEPROM</td></tr>
+        <tr><td>NVRAM（RTC SRAM）</td><td><code class="inline">env/nvram.c</code></td><td>带电池的 SRAM</td></tr>
+        <tr><td>OneNAND / dataflash</td><td><code class="inline">env/onenand.c</code></td><td>老平台</td></tr>
+        <tr><td>remote</td><td><code class="inline">env/remote.c</code></td><td>经 cros_ec 等远端获取</td></tr>
+        <tr><td>SCSI</td><td><code class="inline">env/scsi.c</code></td><td>SATA/SCSI 盘上裸扇区</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout info">
+      💡 <b>冗余环境</b>（redundant environment）：在 NOR/NAND/MMC/FAT 上可保存两份交替写入，掉电时不会损坏旧配置；
+      Linux 侧配套工具 <code class="inline">fw_printenv / fw_setenv</code>（tools/env）可在系统内读写同一环境。
+    </div>
+
+    <h3>常用变量</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>变量</th><th>作用</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">bootcmd</code></td><td>自动启动命令串（autoboot 的核心）</td></tr>
+        <tr><td><code class="inline">bootdelay</code> / <code class="inline">bootstopkey</code></td><td>倒计时秒数 / 打断自动启动的密钥串</td></tr>
+        <tr><td><code class="inline">bootargs</code></td><td>传给 Linux 内核的命令行</td></tr>
+        <tr><td><code class="inline">boot_targets</code></td><td>标准启动的扫描顺序（mmc0 mmc1 usb0 pxe dhcp…）</td></tr>
+        <tr><td><code class="inline">ipaddr / serverip / netmask / gatewayip / ethaddr</code></td><td>网络静态配置与 MAC 地址</td></tr>
+        <tr><td><code class="inline">bootfile</code> / <code class="inline">rootpath</code></td><td>TFTP 默认文件名 / NFS 根路径</td></tr>
+        <tr><td><code class="inline">autoload</code></td><td>dhcp 后是否自动 tftpboot bootfile</td></tr>
+        <tr><td><code class="inline">loadaddr</code> 及 *_addr_r 系列</td><td>默认加载地址（kernel/fdt/initrd/scriptaddr）</td></tr>
+        <tr><td><code class="inline">fdt_high / initrd_high</code></td><td>设备树 / initrd 加载位置策略（0xffffffff 表示不重定位）</td></tr>
+        <tr><td><code class="inline">stdin / stdout / stderr</code></td><td>控制台设备绑定（serial、vidconsole…）</td></tr>
+        <tr><td><code class="inline">bootcount / bootlimit / altbootcmd</code></td><td>失败计数与回滚</td></tr>
+        <tr><td><code class="inline">preboot</code></td><td>bootcmd 前执行的预处理（如画 Logo）</td></tr>
+        <tr><td><code class="inline">silent</code></td><td>静默控制台，抑制启动输出</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>操作命令</h3>
+    <pre class="code">=&gt; printenv bootargs        <span class="cm"># 查看单个 / 全部变量</span>
+=&gt; setenv bootargs console=ttyS0,115200 root=/dev/mmcblk0p2
+=&gt; saveenv                  <span class="cm"># 持久化到介质</span>
+=&gt; editenv bootargs         <span class="cm"># 行编辑修改变量</span>
+=&gt; env default -a           <span class="cm"># 恢复默认环境</span>
+=&gt; env export -t ${loadaddr} <span class="cm"># 导出文本到内存（配合 save 写盘）</span>
+=&gt; env import -t ${loadaddr} ${size}  <span class="cm"># 从内存导入（批量下发配置）</span></pre>
+
+    <h3>进阶机制</h3>
+    <div class="card">
+      <ul>
+        <li><strong>默认环境</strong>：板卡通过 <code class="inline">CONFIG_EXTRA_ENV_SETTINGS</code> 追加默认变量；运行期改动可 <code class="inline">env erase</code> 重置。</li>
+        <li><strong>回调（callbacks）</strong>（<code class="inline">env/callback.c</code>）：变量变化自动触发动作，如 <code class="inline">bootfile:loadaddr</code> 联动、<code class="inline">baudrate</code> 变更时确认并切换串口速率。</li>
+        <li><strong>标志位（flags）</strong>（<code class="inline">env/flags.c</code>）：按类型（字符串/十进制/IP/MAC）校验取值，或设为写保护（force-write 白名单 <code class="inline">CONFIG_ENV_WRITEABLE_LIST</code>）。</li>
+        <li><strong>ATF 式动态生成</strong>：配合 <code class="inline">env ask</code> 交互提问、<code class="inline">setexpr</code> 运算，可写出参数化升级脚本。</li>
+      </ul>
+    </div>
+    <div class="pager">
+      <button data-go="cli">← 上一章：命令行 Shell</button>
+      <button data-go="dm">下一章：驱动模型 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 09 DM ============ -->
+  <section class="panel" id="dm">
+    <div class="sec-title"><span class="idx">09</span>驱动模型 DM</div>
+    <div class="sec-sub">Driver Model · uclass / driver / udevice · 设备树绑定</div>
+
+    <div class="card">
+      <p><strong>驱动模型（Driver Model, DM）</strong>（<code class="inline">drivers/core/</code>）是 v2014.10 引入、
+      现在强制的设备抽象框架，思想与 Linux 内核的设备模型一致：把"设备类别"抽象为 <strong>uclass</strong>，
+      把"具体实现"抽象为 <strong>driver</strong>，运行实例为 <strong>udevice</strong>，三者通过设备树（device tree）连接。</p>
+    </div>
+
+    <h3>核心概念</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>概念</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><b>uclass</b></td><td>一类设备的公共接口（如 UCLASS_MMC、UCLASS_I2C、UCLASS_ETH），定义统一 API 与该类设备链表</td></tr>
+        <tr><td><b>driver</b></td><td>某芯片的驱动实现（如 rockchip-dw-mmc），声明 compatible 匹配表、probe/remove 回调、私有数据大小</td></tr>
+        <tr><td><b>udevice</b></td><td>运行期设备实例，由设备树节点（ofnode）或平台数据生成，挂到所属 uclass</td></tr>
+        <tr><td><b>uclass driver</b></td><td>管理整类设备的公共逻辑（枚举顺序、ops 分发）</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>生命周期：bind → probe</h3>
+    <div class="card">
+      <ol>
+        <li><strong>bind（绑定）</strong>：解析设备树，按 <code class="inline">compatible</code> 匹配驱动并创建 udevice，建立父子拓扑（如 I2C 总线下的子设备）；此阶段不碰硬件，开销极低。</li>
+        <li><strong>probe（探测）</strong>：首次使用时才初始化硬件——时钟、引脚、电源、寄存器；失败可返回错误延迟重试。</li>
+        <li><strong>remove</strong>：卸载（多用于测试与 USB 热插拔）。</li>
+      </ol>
+      <p>常用 API：<code class="inline">uclass_get_device(UCLASS_MMC, 0, &amp;dev)</code> 按序号取设备并自动 probe、
+      <code class="inline">dev_read_*</code> 读设备树属性、<code class="inline">device_get_uclass_priv()</code> 取类私有数据、
+      <code class="inline">ops</code> 结构体调用该类统一操作接口。</p>
+    </div>
+
+    <h3>SPL 场景：of-platdata</h3>
+    <div class="card">
+      <p>SPL 中没有完整的 libfdd/设备树解析空间时，可用 <strong>of-platdata</strong>（<code class="inline">dtoc</code> 工具）：
+      构建时把设备树编译成 C 平台数据结构直接链入镜像，驱动同时支持两种数据来源（<code class="inline">of_to_plat</code> 回调统一适配）。</p>
+    </div>
+
+    <h3>调试命令</h3>
+    <pre class="code">=&gt; dm tree          <span class="cm"># 打印设备树形拓扑（uclass、驱动、状态、地址）</span>
+ Class     Index  Probed  Driver                Name
+ -----------------------------------------------------------
+ root        0    [ + ]   root_driver           root_driver
+ mmc         0    [ + ]   rockchip_dw_mmc       mmc@fe2b0000
+ blk         0    [   ]   dwmmc_blk             mmc@fe2b0000.blk
+=&gt; dm uclass        <span class="cm"># 按 uclass 分类列出</span>
+=&gt; dm compat       <span class="cm"># 按 compatible 表列出</span>
+=&gt; dm dump         <span class="cm"># 导出驱动数据结构</span></pre>
+    <div class="pager">
+      <button data-go="env">← 上一章：环境变量</button>
+      <button data-go="drivers">下一章：驱动子系统总览 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 10 驱动子系统 ============ -->
+  <section class="panel" id="drivers">
+    <div class="sec-title"><span class="idx">10</span>驱动子系统总览</div>
+    <div class="sec-sub">drivers/ 下 76 个子系统按功能分类</div>
+
+    <h3>系统核心</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>子系统</th><th>职责</th><th>代表命令 / CONFIG</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">core</code></td><td>DM 设备模型核心（device/uclass/driver/lists）</td><td><code class="inline">dm tree</code></td></tr>
+        <tr><td><code class="inline">clk</code></td><td>时钟框架与各家 SoC 时钟驱动，频率设置</td><td><code class="inline">clk dump</code> · <code class="inline">clk setfreq</code></td></tr>
+        <tr><td><code class="inline">reset</code></td><td>外设复位控制线</td><td>DM RESET uclass</td></tr>
+        <tr><td><code class="inline">pinctrl</code></td><td>引脚复用与电气配置（配合 <code class="inline">iomux</code>）</td><td><code class="inline">pinmux</code> 命令</td></tr>
+        <tr><td><code class="inline">sysreset</code></td><td>系统复位方式（SoC reset / PMIC / watchdog）</td><td><code class="inline">reset</code> 命令</td></tr>
+        <tr><td><code class="inline">sm</code> / <code class="inline">soc</code> / <code class="inline">sysinfo</code></td><td>ARM SMCCC 调用 / SoC 信息 / 板卡信息探测</td><td><code class="inline">smccc</code> · <code class="inline">soc list</code></td></tr>
+        <tr><td><code class="inline">firmware</code> / <code class="inline">scmi</code></td><td>固件接口（SCMI 电源/时钟代理，联动 ATF）</td><td><code class="inline">scmi</code> 命令</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>总线与互联</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>子系统</th><th>职责</th><th>代表命令</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">serial</code></td><td>串口/UART（控制台之源）</td><td>—</td></tr>
+        <tr><td><code class="inline">i2c</code> / <code class="inline">i3c</code></td><td>I2C/I3C 总线与子设备</td><td><code class="inline">i2c dev / probe / read / write</code></td></tr>
+        <tr><td><code class="inline">spi</code></td><td>SPI 主机与从设备（含软 SPI）</td><td><code class="inline">spi</code> 命令</td></tr>
+        <tr><td><code class="inline">pci</code> / <code class="inline">pci_endpoint</code></td><td>PCI/PCIe 枚举与端点模式</td><td><code class="inline">pci enum / list / header</code></td></tr>
+        <tr><td><code class="inline">usb</code></td><td>主机（EHCI/OHCI/xHCI/DWC3…）与 gadget 双角色</td><td><code class="inline">usb start / tree</code></td></tr>
+        <tr><td><code class="inline">virtio</code></td><td>virtio 块/网络设备（虚拟机场景）</td><td><code class="inline">virtio scan</code></td></tr>
+        <tr><td><code class="inline">axi</code> / <code class="inline">bus</code> / <code class="inline">interconnect</code></td><td>AXI 总线访问 / 简单总线 / 片内互联</td><td><code class="inline">axi</code> 命令</td></tr>
+        <tr><td><code class="inline">mailbox</code> / <code class="inline">hwspinlock</code></td><td>核间邮箱 / 硬件自旋锁（多核异构）</td><td>—</td></tr>
+        <tr><td><code class="inline">xen</code> / <code class="inline">w1</code></td><td>Xen 半虚拟化块设备 / 单总线（DS18B20 等）</td><td><code class="inline">w1</code> 命令</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>存储（详见"存储技术"章）</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>子系统</th><th>职责</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">block</code></td><td>块设备抽象层（BLK uclass）与块缓存</td></tr>
+        <tr><td><code class="inline">mmc</code> / <code class="inline">mtd</code></td><td>eMMC/SD/SDIO；NAND、SPI-NOR、OneNAND 等 MTD 设备</td></tr>
+        <tr><td><code class="inline">ata</code> / <code class="inline">scsi</code> / <code class="inline">nvme</code> / <code class="inline">ufs</code></td><td>SATA / SCSI / NVMe SSD / UFS 闪存</td></tr>
+        <tr><td><code class="inline">fwu-mdata</code></td><td>FWU 双分区元数据访问</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>电源与模拟</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>子系统</th><th>职责</th><th>代表命令</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">power</code></td><td>PMIC、regulator 稳压器、充电器、电量计、电池</td><td><code class="inline">pmic</code> · <code class="inline">regulator</code></td></tr>
+        <tr><td><code class="inline">gpio</code></td><td>GPIO 读写与方向控制</td><td><code class="inline">gpio input/set/input/value</code></td></tr>
+        <tr><td><code class="inline">led</code> / <code class="inline">button</code></td><td>LED（含呼吸灯）/ 按键</td><td><code class="inline">led list / on</code> · <code class="inline">button</code></td></tr>
+        <tr><td><code class="inline">adc</code></td><td>模数转换</td><td><code class="inline">adc read</code></td></tr>
+        <tr><td><code class="inline">pwm</code></td><td>PWM 输出（背光、风扇、蜂鸣）</td><td><code class="inline">pwm</code> 命令</td></tr>
+        <tr><td><code class="inline">thermal</code></td><td>温度传感</td><td><code class="inline">temperature list / get</code></td></tr>
+        <tr><td><code class="inline">rtc</code></td><td>实时时钟</td><td><code class="inline">date / rtc read / write</code></td></tr>
+        <tr><td><code class="inline">reboot-mode</code></td><td>重启原因寄存器（恢复模式、recovery 判定）</td><td>配合 <code class="inline">bootcmd</code></td></tr>
+        <tr><td><code class="inline">watchdog</code></td><td>看门狗喂狗/触发</td><td><code class="inline">wdt</code> 命令</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>内存与异构计算</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>子系统</th><th>职责</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">ram</code> / <code class="inline">ddr</code></td><td>SDRAM 初始化框架与 DDR PHY/SCTL 驱动</td></tr>
+        <tr><td><code class="inline">cache</code></td><td>缓存维护操作（DMA 一致性）</td></tr>
+        <tr><td><code class="inline">dma</code></td><td>DMA 引擎（memcpy 加速）</td></tr>
+        <tr><td><code class="inline">iommu</code> / <code class="inline">smem</code></td><td>IOMMU 地址翻译 / 共享内存（高通）</td></tr>
+        <tr><td><code class="inline">remoteproc</code></td><td>协处理器加载与生命周期（如 i.MX M4、DSP 固件）</td></tr>
+        <tr><td><code class="inline">fpga</code> / <code class="inline">qe</code></td><td>FPGA 比特流加载 / QUICC Engine</td></tr>
+        <tr><td><code class="inline">cpu</code> / <code class="inline">timer</code></td><td>CPU 子系统管理（多核启动、SMP）与定时器</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>多媒体与人机接口</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>子系统</th><th>职责</th><th>代表命令</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">video</code></td><td>显示控制器与面板（HDMI/DSI/DP/LCD），vidconsole 文本控制台</td><td><code class="inline">bmp display</code></td></tr>
+        <tr><td><code class="inline">input</code></td><td>键盘输入（矩阵键盘、USB 键盘）</td><td>—</td></tr>
+        <tr><td><code class="inline">sound</code></td><td>I2S/codec 音频</td><td><code class="inline">sound play</code></td></tr>
+        <tr><td><code class="inline">misc</code> / <code class="inline">mfd</code></td><td>杂项寄存器 / 多功能器件</td><td>—</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>安全与加密</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>子系统</th><th>职责</th><th>代表命令</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">crypto</code></td><td>硬件加密加速器（SAHARA、CAAM 等）</td><td>—</td></tr>
+        <tr><td><code class="inline">rng</code></td><td>硬件随机数</td><td><code class="inline">rng</code> 命令</td></tr>
+        <tr><td><code class="inline">tpm</code></td><td>TPM 1.2 / 2.0 设备（I2C/SPI/MMIO）</td><td><code class="inline">tpm init / read / extend</code></td></tr>
+        <tr><td><code class="inline">tee</code></td><td>信任执行环境（OP-TEE、AMD-TEE）客户端</td><td>—</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>网络与下载</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>子系统</th><th>职责</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">net</code></td><td>以太网控制器、PHY（phylib）、MDIO、DSA 交换机（详见"网络功能"章）</td></tr>
+        <tr><td><code class="inline">dfu</code> / <code class="inline">fastboot</code></td><td>DFU 与 Fastboot 下载通道（详见"下载与固件升级"章）</td></tr>
+        <tr><td><code class="inline">phy</code> / <code class="inline">extcon</code> / <code class="inline">mux</code></td><td>物理层（SerDes/USB3 PHY）/ 外设检测 / 信号复用开关</td></tr>
+      </tbody>
+    </table></div>
+    <div class="pager">
+      <button data-go="dm">← 上一章：驱动模型</button>
+      <button data-go="fs">下一章：文件系统 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 11 文件系统 ============ -->
+  <section class="panel" id="fs">
+    <div class="sec-title"><span class="idx">11</span>文件系统</div>
+    <div class="sec-sub">13 种文件系统 · 统一 FS API · 块设备即插即用</div>
+
+    <h3>统一文件系统接口</h3>
+    <div class="card">
+      <p><code class="inline">fs/fs.c</code> 提供与具体格式无关的通用 API：<code class="inline">ls / load / save / size /
+      uuid / fstype</code>。命令行先 <code class="inline">&lt;devtype&gt; dev &lt;dev&gt;:&lt;分区&gt;</code> 选中块设备，
+      随后所有文件操作自动按探测到的文件系统分发——用户不必记忆 fatls/ext4ls 等命令的差异。</p>
+      <pre class="code">=&gt; mmc dev 0:3                 <span class="cm"># 选中 MMC0 的 3 号分区（会自动探测 fstype）</span>
+=&gt; ls /boot                     <span class="cm"># 列目录（自动识别 ext4）</span>
+=&gt; load mmc 0:3 ${kernel_addr_r} /boot/Image
+=&gt; save mmc 0:3 ${loadaddr} /tmp/dump.bin ${size}   <span class="cm"># 写回（仅 rw 文件系统）</span></pre>
+    </div>
+
+    <h3>支持的文件系统（fs/ 目录）</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>文件系统</th><th>读写</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><b>ext2 / ext4</b></td><td><span class="badge b-green">读写</span></td><td>Linux 主流文件系统，支持 extents、256 字节 inode</td></tr>
+        <tr><td><b>FAT12/16/32</b></td><td><span class="badge b-green">读写</span></td><td>嵌入式最常用：boot 分区、uboot.env；支持 LFN 长文件名</td></tr>
+        <tr><td><b>exFAT</b></td><td><span class="badge b-green">读写</span></td><td>大容量 SD/U 盘 FAT 扩展</td></tr>
+        <tr><td><b>UBIFS</b></td><td><span class="badge b-green">读写</span></td><td>NAND 专用（需 UBI 卷），磨损均衡、掉电安全</td></tr>
+        <tr><td><b>JFFS2</b></td><td><span class="badge b-green">读写</span></td><td>NOR Flash 日志型文件系统</td></tr>
+        <tr><td><b>SquashFS</b></td><td><span class="badge b-gray">只读</span></td><td>压缩只读 FS（gzip/lzo/zstd），固件 rootfs 常用</td></tr>
+        <tr><td><b>EROFS</b></td><td><span class="badge b-gray">只读</span></td><td>新一代压缩只读 FS（Android/嵌入式增量方案）</td></tr>
+        <tr><td><b>BTRFS</b></td><td><span class="badge b-gray">只读</span></td><td>写时复制 FS（zstd 压缩卷读取）</td></tr>
+        <tr><td><b>CRAMFS</b></td><td><span class="badge b-gray">只读</span></td><td>传统压缩只读 FS</td></tr>
+        <tr><td><b>ZFS</b></td><td><span class="badge b-gray">只读</span></td><td>Sun ZFS 池读取</td></tr>
+        <tr><td><b>CBFS</b></td><td><span class="badge b-gray">只读</span></td><td>coreboot ROM 内文件系统</td></tr>
+        <tr><td><b>semihosting</b></td><td><span class="badge b-green">读写</span></td><td>经 JTAG/调试器访问主机文件系统（开发调试利器）</td></tr>
+        <tr><td><b>hostfs</b></td><td><span class="badge b-green">读写</span></td><td>Sandbox 直接挂载 Linux 主机目录</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>UBI / UBIFS 子系统</h3>
+    <div class="card">
+      <p>裸 NAND 需要应对坏块与磨损，<strong>UBI（Unsorted Block Images）</strong>在 MTD 之上提供卷管理：</p>
+      <pre class="code">=&gt; nand info                              <span class="cm"># NAND 器件信息</span>
+=&gt; ubi part root                          <span class="cm"># 附加到名为 root 的 MTD 分区</span>
+=&gt; ubi info                               <span class="cm"># 卷布局</span>
+=&gt; ubifsmount ubi0:rootfs                 <span class="cm"># 挂载 UBIFS 卷</span>
+=&gt; ubifsload ${kernel_addr_r} /boot/Image <span class="cm"># 从 UBIFS 读内核</span>
+=&gt; ubi write ${loadaddr} kernel ${size}   <span class="cm"># 写 UBI 卷（固件更新）</span>
+=&gt; ubi create recovery 0x100000           <span class="cm"># 创建新卷</span></pre>
+    </div>
+    <div class="pager">
+      <button data-go="drivers">← 上一章：驱动子系统总览</button>
+      <button data-go="net">下一章：网络功能 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 12 网络 ============ -->
+  <section class="panel" id="net">
+    <div class="sec-title"><span class="idx">12</span>网络功能</div>
+    <div class="sec-sub">lwIP 协议栈 · 以太网驱动 · IPv4/IPv6</div>
+
+    <h3>lwIP 网络栈</h3>
+    <div class="card">
+      <p>自 v2024.04 起 U-Boot 用开源 <strong>lwIP（lightweight IP）</strong>（<code class="inline">net/lwip/</code>）
+      替换了自研网络栈：代码更现代、支持 TCP 应用（wget、fastboot TCP），并保留 U-Boot 的轮询式主循环（net_loop）。
+      应用协议都构建其上，无需中断与多线程。</p>
+    </div>
+
+    <h3>应用层协议</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>协议</th><th>实现</th><th>命令 / 用法</th></tr></thead>
+      <tbody>
+        <tr><td>DHCP / BOOTP</td><td><code class="inline">net/bootp.c</code></td><td><code class="inline">dhcp</code> —— 获取 IP、网关、服务器地址</td></tr>
+        <tr><td>DHCPv6 / IPv6</td><td><code class="inline">net/dhcpv6.c</code> · <code class="inline">net/net6.c</code></td><td><code class="inline">dhcpv6</code>（<code class="inline">CONFIG_IPV6</code>）</td></tr>
+        <tr><td>TFTP</td><td><code class="inline">net/tftp.c</code></td><td><code class="inline">tftpboot ${loadaddr} Image</code> 开发下载主力</td></tr>
+        <tr><td>NFS</td><td><code class="inline">net/nfs.c</code></td><td><code class="inline">nfs ${loadaddr} ${serverip}:/tftp/Image</code></td></tr>
+        <tr><td>Ping</td><td><code class="inline">net/ping.c</code> · <code class="inline">ping6.c</code></td><td><code class="inline">ping 192.168.1.1</code> 连通性测试</td></tr>
+        <tr><td>DNS</td><td><code class="inline">net/dns.c</code></td><td><code class="inline">nslookup dev.example.com</code></td></tr>
+        <tr><td>SNTP</td><td><code class="inline">net/sntp.c</code></td><td><code class="inline">sntp</code> 网络对时</td></tr>
+        <tr><td>HTTP</td><td><code class="inline">net/wget.c</code>（TCP）</td><td><code class="inline">wget ${loadaddr} http://server/Image</code></td></tr>
+        <tr><td>IPv4LL</td><td><code class="inline">net/link_local.c</code></td><td>169.254.x.x 链路本地地址自动协商</td></tr>
+        <tr><td>WOL</td><td><code class="inline">net/wol.c</code></td><td><code class="inline">wol</code> 网络唤醒魔术包</td></tr>
+        <tr><td>CDP / RARP</td><td><code class="inline">net/cdp.c</code> · <code class="inline">rarp.c</code></td><td>Cisco 发现 / 老式反向 ARP（遗留兼容）</td></tr>
+        <tr><td>pcap</td><td><code class="inline">net/pcap.c</code></td><td><code class="inline">pcap</code> 抓包存文件，主机 wireshark 分析</td></tr>
+        <tr><td>Fastboot（网络）</td><td><code class="inline">net/fastboot_*.c</code></td><td>fastboot over UDP/TCP，产线无线/有线刷机</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>以太网驱动体系</h3>
+    <div class="card">
+      <ul>
+        <li><strong>eth-uclass</strong>（<code class="inline">drivers/net/</code>）：统一 ETH uclass，几十种 MAC 驱动（DWMAC、FEC、MACB、e1000、r8169、bcmgenet…）；</li>
+        <li><strong>phylib</strong>（<code class="inline">drivers/net/phy/</code>）：几十种 PHY 芯片驱动 + MDIO/MDIO-mux 总线管理，<code class="inline">mii</code> / <code class="inline">mdio</code> 命令可读写寄存器；</li>
+        <li><strong>DSA</strong>（<code class="inline">net/dsa-uclass.c</code>）：分布式交换机架构，多端口交换芯片（如 ksz9477）每端口呈现为独立网卡；</li>
+        <li><strong>eth_bootdev</strong>：把网卡接入标准启动框架（PXE / EFI 网络启动）；</li>
+        <li><strong>网络 gadget</strong>：RNDIS/CDC-ECM USB 网卡复用（gadget 模式）。</li>
+      </ul>
+    </div>
+
+    <h3>网络启动全流程示例</h3>
+    <pre class="code">=&gt; setenv ipaddr 192.168.1.50
+=&gt; setenv serverip 192.168.1.10
+=&gt; dhcp                                    <span class="cm"># 或静态配置</span>
+=&gt; tftpboot ${kernel_addr_r} Image
+=&gt; tftpboot ${fdt_addr_r} board.dtb
+=&gt; setenv bootargs console=ttyS0,115200 root=/dev/nfs nfsroot=192.168.1.10:/nfsroot ip=dhcp
+=&gt; booti ${kernel_addr_r} - ${fdt_addr_r}</pre>
+    <div class="pager">
+      <button data-go="fs">← 上一章：文件系统</button>
+      <button data-go="storage">下一章：存储技术 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 13 存储 ============ -->
+  <section class="panel" id="storage">
+    <div class="sec-title"><span class="idx">13</span>存储技术</div>
+    <div class="sec-sub">块设备层 · MMC · MTD/NAND · NVMe/UFS/SATA · 虚拟块设备</div>
+
+    <h3>块设备抽象层</h3>
+    <div class="card">
+      <p>所有随机存取设备统一为 <strong>BLK uclass</strong>（<code class="inline">drivers/block/</code>）：设备名形如
+      <code class="inline">mmc 0</code>、<code class="inline">scsi 0:1</code>、<code class="inline">nvme 0:1</code>（设备:分区）。
+      其上叠加：</p>
+      <ul>
+        <li><strong>分区表</strong>（<code class="inline">disk/</code>）：MBR、GPT、ISO9660 El Torito；<code class="inline">part list mmc 0</code> 查看，<code class="inline">gpt write</code> 命令可写 GPT 表；</li>
+        <li><strong>块缓存</strong>（blkcache，<code class="inline">cmd/blkcache.c</code>）：加速文件系统重复读；</li>
+        <li><strong>blkmap</strong>（<code class="inline">cmd/blkmap.c</code>）：把内存区或线性扇区范围虚拟成块设备，便于网络流 / 合成镜像访问。</li>
+      </ul>
+    </div>
+
+    <h3>MMC / SD / eMMC</h3>
+    <div class="card">
+      <p><code class="inline">drivers/mmc/</code> 支持完整 MMC 规范家族：SD/SDHC/SDXC、eMMC 4.x/5.1（HS200/HS400）、MMC boot 分区与 RPMB 分区。</p>
+      <pre class="code">=&gt; mmc list                     <span class="cm"># 枚举控制器</span>
+=&gt; mmc dev 1 2                  <span class="cm"># 切到 eMMC(hci1) 的 boot2 分区</span>
+=&gt; mmc info                     <span class="cm"># 容量、速率模式</span>
+=&gt; mmc read ${loadaddr} 0x0 0x400   <span class="cm"># 读 0x400 个块到内存</span>
+=&gt; mmc write ${loadaddr} 0x0 0x400  <span class="cm"># 写回（烧写 bl2 等）</span>
+=&gt; mmc erase 0x100 0x40
+=&gt; mmc bootbus / mmc bootpart …    <span class="cm"># eMMC 启动分区配置</span></pre>
+    </div>
+
+    <h3>MTD：NAND / SPI NOR</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>技术</th><th>驱动位置</th><th>命令</th></tr></thead>
+      <tbody>
+        <tr><td>raw NAND</td><td><code class="inline">drivers/mtd/nand/raw</code></td><td><code class="inline">nand info / erase / write / read / dump / markbad / bcb</code></td></tr>
+        <tr><td>SPI NAND</td><td><code class="inline">drivers/mtd/nand/spi</code></td><td>同上（经 MTD 框架统一）</td></tr>
+        <tr><td>SPI NOR</td><td><code class="inline">drivers/mtd/spi</code>（spi-nor 核心）</td><td><code class="inline">sf probe / read / write / erase / update / protect</code></td></tr>
+        <tr><td>并行 NOR（CFI）</td><td><code class="inline">drivers/mtd/nor</code></td><td><code class="inline">flinfo / erase / protect</code>，直接内存映射读写</td></tr>
+        <tr><td>OneNAND / DataFlash</td><td><code class="inline">drivers/mtd/onenand</code></td><td>遗留平台支持</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>大容量存储</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>接口</th><th>子系统</th><th>命令</th></tr></thead>
+      <tbody>
+        <tr><td>SATA / IDE</td><td><code class="inline">drivers/ata</code></td><td><code class="inline">sata init / sata list</code></td></tr>
+        <tr><td>SCSI</td><td><code class="inline">drivers/scsi</code></td><td><code class="inline">scsi scan / dev</code></td></tr>
+        <tr><td>NVMe SSD</td><td><code class="inline">drivers/nvme</code></td><td><code class="inline">nvme scan / nvme detail</code></td></tr>
+        <tr><td>UFS 闪存</td><td><code class="inline">drivers/ufs</code></td><td><code class="inline">ufs</code> 命令</td></tr>
+        <tr><td>USB 存储</td><td><code class="inline">common/usb_storage.c</code></td><td><code class="inline">usb start; fatls usb 0:1 /</code></td></tr>
+        <tr><td>virtio-blk</td><td><code class="inline">drivers/virtio</code></td><td><code class="inline">virtio scan</code></td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>小存储与 OTP</h3>
+    <div class="card">
+      <ul>
+        <li><strong>EEPROM</strong>：<code class="inline">i2c</code> 系命令 + <code class="inline">eeprom</code> 命令读写；<strong>TLV EEPROM</strong>（<code class="inline">tlv_eeprom</code>）按 ONIE TLV 格式读取板卡资产信息；</li>
+        <li><strong>1-Wire EEPROM</strong>（DS2431 等，<code class="inline">drivers/w1-eeprom</code>）；</li>
+        <li><strong>OTP fuse</strong>：SoC 熔丝（i.MX ocotp 等），<code class="inline">fuse prog / read</code>（MAC 地址、密钥哈希烧写）。</li>
+      </ul>
+    </div>
+    <div class="pager">
+      <button data-go="net">← 上一章：网络功能</button>
+      <button data-go="flashing">下一章：下载与固件升级 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 14 下载与固件升级 ============ -->
+  <section class="panel" id="flashing">
+    <div class="sec-title"><span class="idx">14</span>下载与固件升级</div>
+    <div class="sec-sub">DFU · Fastboot · UMS · Capsule / FWU / RAUC · A/B 回滚</div>
+
+    <h3>下载通道总览</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>通道</th><th>传输层</th><th>主机端工具</th><th>典型用途</th></tr></thead>
+      <tbody>
+        <tr><td><b>DFU</b></td><td>USB DFU 1.1 / UART</td><td>dfu-util</td><td>开发期分区级固件烧写（IEC 标准）</td></tr>
+        <tr><td><b>Fastboot</b></td><td>USB / UDP / TCP</td><td>fastboot</td><td>Android 产线刷机（flash/boot/oem 命令族）</td></tr>
+        <tr><td><b>UMS</b></td><td>USB Mass Storage</td><td>dd / 烧盘工具</td><td>把板载 eMMC 变成主机 U 盘直接写镜像</td></tr>
+        <tr><td>Rockusb</td><td>USB</td><td>rkdeveloptool</td><td>Rockchip 平台下载协议</td></tr>
+        <tr><td>thordown</td><td>USB (Thor/Loki)</td><td>heimdall</td><td>三星平台下载协议</td></tr>
+        <tr><td>Ymodem / Kermit / S-Record</td><td>串口</td><td>Tera Term / minicom</td><td>无 USB 网口时的应急加载（loady/loadb/loads）</td></tr>
+        <tr><td>rkmtd</td><td>USB</td><td>fastboot</td><td>Rockchip MTD（SPI NAND）经 fastboot 通道烧写</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>DFU（Device Firmware Upgrade）</h3>
+    <pre class="code"><span class="cm"># 设备端：用环境变量声明"DFU 虚拟分区"映射</span>
+=&gt; setenv dfu_alt_info <span class="str">"spl part 0 1;u-boot part 0 2;uboot fat 0 1 u-boot.bin;ram ram 0=ram0x40008000"</span>
+=&gt; dfu 0 mmc 0         <span class="cm"># 进入 DFU 等待（也可 dfu 0 sf / ram / mtd）</span>
+
+<span class="cm"># 主机端</span>
+$ dfu-util -l                        <span class="cm"># 列出 alt 分区</span>
+$ dfu-util -a u-boot -D u-boot.bin   <span class="cm"># 烧写 U-Boot 分区</span></pre>
+    <p>支持载体：MMC 分区、FAT 文件、SF 扇区、NAND/MTD、RAM、virtio、SF udp（网络 DFU）、UART 变体；
+    支持 <code class="inline">dfu <em>n</em> … list</code> 查看与跳过坏块等细节选项。</p>
+
+    <h3>Fastboot</h3>
+    <pre class="code"><span class="cm"># 设备端</span>
+=&gt; fastboot usb 0            <span class="cm"># USB gadget 模式</span>
+=&gt; fastboot udp              <span class="cm"># 网口 UDP 模式（fastboot tcp 为 TCP 变体）</span>
+=&gt; fastboot oem board-info   <span class="cm"># 自定义 OEM 命令钩子</span>
+
+<span class="cm"># 主机端</span>
+$ fastboot getvar all
+$ fastboot flash bootloader u-boot.bin   <span class="cm"># 按 ${partition} 环境变量映射分区</span>
+$ fastboot boot boot.img                 <span class="cm"># 临时启动不落盘（现场调试）</span>
+$ fastboot reboot</pre>
+
+    <h3>固件升级框架（OTA 级别）</h3>
+    <div class="tbl-wrap"><table class="tbl c-widen">
+      <thead><tr><th>机制</th><th>原理</th><th>关键点</th></tr></thead>
+      <tbody>
+        <tr><td><b>EFI Capsule</b></td><td>UEFI 标准更新包放入 ESP 的 <code class="inline">/EFI/UpdateCapsule</code>，重启后 U-Boot 校验签名并自更新固件，ESRT 表报告版本</td><td><code class="inline">CONFIG_EFI_CAPSULE_ON_DISK</code> · <code class="inline">efidebug capsule</code> · 签名强制</td></tr>
+        <tr><td><b>FWU（双存储分区）</b></td><td>U-Boot 原生 A/B 双 bank 方案：FWU 元数据记录活跃 bank 与 trial 状态，配合 EFI capsule 使用</td><td><code class="inline">drivers/fwu-mdata</code> · <code class="inline">fwu_mdata_read</code> · <code class="inline">efidebug capsule disk-update</code></td></tr>
+        <tr><td><b>RAUC</b></td><td>读取 RAUC slot 佩标记（佩带上次启动结果），选择健康 A/B 分区</td><td><code class="inline">bootmeth_rauc</code></td></tr>
+        <tr><td><b>Android A/B</b></td><td>bootloader control block（BCB）管理槽位与回滚计数</td><td><code class="inline">bcb</code> 命令 · android_ab</td></tr>
+        <tr><td><b>update 命令</b></td><td>从存储自动加载固件包并自更新（U-Boot 传统方式）</td><td><code class="inline">CONFIG_UPDATE_TFTP</code>（网络下发）等</td></tr>
+        <tr><td><b>bootcount 回滚</b></td><td>启动计数持久化，超过 bootlimit 转 altbootcmd</td><td>所有 A/B 方案的兜底</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>启动保护闭环</h3>
+    <div class="card">
+      <p>典型的安全升级闭环：<strong>Capsule/FWU 更新 B 分区 → 切换活跃分区 → trial boot →
+      内核/应用确认（或 bootcount 超限）→ 确认写元数据或回滚 A 分区</strong>。U-Boot 同时是更新执行者与回滚裁决者。</p>
+    </div>
+    <div class="pager">
+      <button data-go="storage">← 上一章：存储技术</button>
+      <button data-go="security">下一章：安全特性 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 15 安全 ============ -->
+  <section class="panel" id="security">
+    <div class="sec-title"><span class="idx">15</span>安全特性</div>
+    <div class="sec-sub">验证启动 · 数字签名 · TPM · 安全启动 · 可信执行环境</div>
+
+    <h3>验证启动链</h3>
+    <div class="pipeline">
+      <div class="pipe-node"><b>BootROM</b><span>SoC 根信任<br>（HAB / 安全熔丝）</span></div>
+      <div class="pipe-node"><b>SPL</b><span>SPL 验证 U-Boot<br>FIT 签名</span></div>
+      <div class="pipe-node"><b>U-Boot</b><span>验证内核 FIT<br>（RSA/ECDSA）</span></div>
+      <div class="pipe-node"><b>Linux</b><span>dm-verity 等<br>接管验证</span></div>
+    </div>
+    <p>每一级都持有下一级的公钥并校验签名，构成从芯片熔丝到操作系统的一条<strong>信任链</strong>。</p>
+
+    <h3>FIT 签名验证</h3>
+    <div class="card">
+      <ul>
+        <li><code class="inline">CONFIG_FIT_SIGNATURE</code>：开启 FIT 镜像签名强制校验（签名节点位于 images 与 configurations 两级）；</li>
+        <li>算法：<strong>RSA</strong>（1024/2048/3072/4096）与 <strong>ECDSA</strong>（prime256v1 等），加密库基于 mbedtls（<code class="inline">lib/mbedtls</code>）；</li>
+        <li>公钥嵌入控制 FDT 的 <code class="inline">/signature</code> 节点（mkimage -k 目录注入）；</li>
+        <li><code class="inline">CONFIG_FIT_FULL_CHECK</code> 控制校验粒度；<code class="inline">required = "conf"</code> 强制配置级签名；</li>
+        <li>支持按 key-name-hint 选 key，与启动时 <code class="inline">verify</code> 环境变量交互（量产可禁手工开关）；</li>
+        <li>FIT 还支持 <strong>AES 加密</strong>镜像（<code class="inline">boot/image-cipher.c</code>，密钥经 KEY_ENC 环境注入）。</li>
+      </ul>
+    </div>
+
+    <h3>安全机制矩阵</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>机制</th><th>说明</th><th>入口</th></tr></thead>
+      <tbody>
+        <tr><td><b>VBE（Verified Boot for Embedded）</b></td><td>嵌入式验证启动框架：simple 方法（读取存储中的核验结果/mem默 key）、abrec（A/B 记录）方法，用 TPM NV 保存状态</td><td><code class="inline">boot/vbe_*.c</code> · <code class="inline">vbe</code> 命令 · vbe bootmeth</td></tr>
+        <tr><td><b>Android AVB</b></td><td>Android Verified Boot 完整移植：vbmeta 校验链、dm-verity 元数据、防回滚版本</td><td><code class="inline">lib/libavb</code> · <code class="inline">avb</code> 命令 · android bootmeth</td></tr>
+        <tr><td><b>TPM 1.2 / 2.0</b></td><td>完整命令族：init、自检、NV 读写、PCR 扩展、字典攻击锁定等</td><td><code class="inline">tpm init / nv_read / extend</code> · <code class="inline">tpm_test</code></td></tr>
+        <tr><td><b>度量启动</b></td><td>把固件/内核哈希扩展进 PCR，生成 TPM 事件日志供远程证明</td><td><code class="inline">CONFIG_MEASURED_BOOT</code> · EFI_TCG2</td></tr>
+        <tr><td><b>EFI Secure Boot</b></td><td>PK/KEK/db/dbx 四级证书库，验证 EFI 程序 X.509 签名</td><td><code class="inline">CONFIG_EFI_SECURE_BOOT</code> · <code class="inline">eficonfig sbkey</code> 写密钥</td></tr>
+        <tr><td><b>Capsule 认证</b></td><td>固件升级包签名验证（同 EFI Secure Boot 证书链）</td><td><code class="inline">CONFIG_EFI_CAPSULE_AUTHENTICATE</code></td></tr>
+        <tr><td><b>OP-TEE（TEE）</b></td><td>加载 OP-TEE OS 并通过 SMC 与其可信应用交互</td><td><code class="inline">drivers/tee</code> · 启动参数 tee=</td></tr>
+        <tr><td><b>SCP03</b></td><td>与安全元件建立 SCP03 加密通道后读取密钥</td><td><code class="inline">scp03</code> 命令</td></tr>
+        <tr><td><b>加密库</b></td><td>mbedtls（RSA/ECDSA/X.509/AES/哈希）、内置 SHA 系列实现</td><td><code class="inline">lib/mbedtls</code></td></tr>
+        <tr><td><b>命令行校验</b></td><td>手工验证文件完整性</td><td><code class="inline">hash</code> · <code class="inline">sha1sum</code> · <code class="inline">sm3sum</code> · <code class="inline">crc32</code> · <code class="inline">cksum</code></td></tr>
+        <tr><td><b>防回滚</b></td><td>OTP 熔丝版本号 + AVB rollback index</td><td><code class="inline">fuse</code> 命令</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>典型安全启动配置片段</h3>
+    <pre class="code"><span class="cm"># .config 关键项</span>
+CONFIG_FIT=y
+CONFIG_FIT_SIGNATURE=y
+CONFIG_FIT_SIGNATURE_MAX_SIZE=0x10000000
+CONFIG_RSA=y
+CONFIG_SPL_FIT_SIGNATURE=y        <span class="cm"># SPL 阶段就验证主体</span>
+CONFIG_MEASURED_BOOT=y            <span class="cm"># TPM 度量</span>
+CONFIG_TPM2=y
+CONFIG_CMD_TPM_V2=y</pre>
+    <div class="pager">
+      <button data-go="flashing">← 上一章：下载与固件升级</button>
+      <button data-go="ui">下一章：交互界面 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 16 UI ============ -->
+  <section class="panel" id="ui">
+    <div class="sec-title"><span class="idx">16</span>交互界面</div>
+    <div class="sec-sub">bootmenu · expo/cedit · 开机 Logo · 显示子系统</div>
+
+    <h3>bootmenu 启动菜单</h3>
+    <div class="card">
+      <p><code class="inline">bootmenu</code> 命令（<code class="inline">cmd/bootmenu.c</code>，基于
+      <code class="inline">common/menu.c</code> 菜单框架）提供串口/显示双端文本菜单：</p>
+      <pre class="code"><span class="cm"># 用 bootmenu_&lt;n&gt;_&lt;标题&gt; 环境变量定义菜单项</span>
+=&gt; setenv bootmenu_0 <span class="str">"启动 Debian=run bootcmd_debian"</span>
+=&gt; setenv bootmenu_1 <span class="str">"进入 U-Boot Shell=exit"</span>
+=&gt; setenv bootmenu_delay 5          <span class="cm"># 默认选择延时</span>
+=&gt; bootmenu</pre>
+    </div>
+
+    <h3>expo / cedit：新一代图形化配置</h3>
+    <div class="card">
+      <p><strong>expo</strong>（<code class="inline">boot/expo*.c</code>，scene/menu/textline 组件）是面向vidconsole 的轻量 UI 框架；
+      <strong>cedit</strong>（<code class="inline">boot/cedit.c</code> + <code class="inline">cmd/cedit.c</code>）在其上构建"配置编辑器"：
+      开机进入可视化菜单调整启动参数（如选择启动槽位、开关验证），选择结果保存进环境变量或文件，
+      适合产线与恢复模式界面。</p>
+    </div>
+
+    <h3>开机画面（Splash Screen）</h3>
+    <div class="card">
+      <ul>
+        <li><code class="inline">CONFIG_SPLASH_SCREEN</code>：preboot 期间自动显示 Logo（BMP 格式）；</li>
+        <li>来源可选：FAT/EXT4 文件、NAND、EEPROM 等（<code class="inline">splashsource</code>/<code class="inline">splashimage</code> 变量）；</li>
+        <li><code class="inline">CONFIG_SPLASH_SCREEN_ALIGN</code> + <code class="inline">splashpos</code>：控制对齐与坐标；</li>
+        <li><code class="inline">bmp display ${splashimage}</code>：手动显示；<code class="inline">bmp info</code> 查看图片参数。</li>
+      </ul>
+    </div>
+
+    <h3>显示与输入子系统</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>能力</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>video 驱动</td><td>HDMI（DW-HDMI、analogix）、MIPI-DSI、eDP、LCD 并口、简单帧缓冲 simplefb；分辨率支持 EDID 读取（<code class="inline">read_edid</code>）</td></tr>
+        <tr><td>vidconsole</td><td>图形控制台：把 stdout 指到 vidconsole 后命令行渲染到屏幕，支持 ANSI 颜色与 UTF-8</td></tr>
+        <tr><td>多控制台并存</td><td><code class="inline">setenv stdout serial,vidconsole</code> 串口与屏幕同时输出</td></tr>
+        <tr><td>USB 键盘</td><td><code class="inline">common/usb_kbd.c</code>：stdin 绑定 usbkbd 后可用键盘操作菜单</td></tr>
+        <tr><td>横幅定制</td><td><code class="inline">CONFIG_PROMPT</code> 提示符、自定义 banner；<code class="inline">ufetch</code> 打印系统概览卡</td></tr>
+        <tr><td>声音</td><td><code class="inline">sound play</code> 播放 wav（hda codec / i2s）</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>bootdelay 交互</h3>
+    <div class="card">
+      <p>自动启动倒计时期间按键即进入命令行/菜单；配合 <code class="inline">bootmenu</code> 可以做成
+      "默认自动启动、按键进恢复菜单"的量产交互模式。<code class="inline">CONFIG_AUTOBOOT_KEYED</code>
+      还支持指定密钥串（甚至加密密钥串）才可打断，防止现场误操作。</p>
+    </div>
+    <div class="pager">
+      <button data-go="security">← 上一章：安全特性</button>
+      <button data-go="debug">下一章：调试与诊断 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 17 调试 ============ -->
+  <section class="panel" id="debug">
+    <div class="sec-title"><span class="idx">17</span>调试与诊断</div>
+    <div class="sec-sub">日志 · 计时 · 追踪 · KGDB · 事件系统 · 自检</div>
+
+    <h3>分级日志系统</h3>
+    <div class="card">
+      <p><code class="inline">common/log.c</code> 提供分类分级日志：<code class="inline">log_debug()/log_info()/log_warn()…</code>
+      宏与 <code class="inline">debug()/pr_info</code> 风格并存。级别从 <code class="inline">LOGL_EMERG</code> 到
+      <code class="inline">LOGL_DEBUG_IO</code>；类别（log category）可精确到子系统（DM、MMC、EFI…）。</p>
+      <pre class="code">=&gt; log level 7            <span class="cm"># 提升到 debug 级</span>
+=&gt; log format <span class="str">"clFfm"</span>       <span class="cm"># 类别/级别/文件/函数/行号</span>
+=&gt; log filter-list        <span class="cm"># 过滤器（按类别、级别、最大数量）</span>
+=&gt; log rec-format /log test</pre>
+      <p>后端：控制台、syslog（网络转发）、EFI 相关日志；SPL 亦可开日志（<code class="inline">CONFIG_SPL_LOG</code>）。</p>
+    </div>
+
+    <h3>性能与行为追踪</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>工具</th><th>用途</th><th>用法</th></tr></thead>
+      <tbody>
+        <tr><td><b>bootstage</b></td><td>启动各阶段耗时统计（ stamps 体系）</td><td><code class="inline">bootstage report</code> · <code class="inline">bootstage stash</code> 导出到内核</td></tr>
+        <tr><td><b>trace</b></td><td>函数级追踪（-pg 风格打点），主机端 <code class="inline">tools/proftool</code> 解析</td><td><code class="inline">trace stats/pause/func</code></td></tr>
+        <tr><td><b>cyclic</b></td><td>后台循环任务（如 demo），可挂看门狗喂狗，观察调度抖动</td><td><code class="inline">cyclic list</code></td></tr>
+        <tr><td><b>iotrace</b></td><td>记录所有 MMIO 寄存器访问</td><td><code class="inline">iotrace stats/dump</code></td></tr>
+        <tr><td><b>event</b></td><td>静态事件通知框架（spy 挂钩：初始化序、USB 扫描等时机）</td><td><code class="inline">event list</code></td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>在线调试</h3>
+    <div class="card">
+      <ul>
+        <li><strong>KGDB</strong>（<code class="inline">CONFIG_CMD_KGDB</code>）：串口接入 gdb，断点/单步调试 U-Boot 自身；配套 <code class="inline">tools/gdb/</code> 脚本；</li>
+        <li><strong>DEBUG_UART</strong>：极早期打印（TLS/PLL 未初始化时也能输出）；</li>
+        <li><strong>内存工具</strong>：<code class="inline">md/mm/nm/mw/cp/cmp</code>、<code class="inline">mtest</code>（内存压力测试）、<code class="inline">loop</code>；</li>
+        <li><strong>设备树检查</strong>：<code class="inline">fdt addr/print/ls</code>；驱动状态 <code class="inline">dm tree</code>；时钟树 <code class="inline">clk dump</code>；</li>
+        <li><strong>地址映射</strong>：<code class="inline">addrmap</code>（带 MMU 平台虚拟↔物理）、<code class="inline">bdinfo</code> 板级信息汇总、<code class="inline">pstore</code> 读 ramoops 崩溃记录；</li>
+        <li><strong>崩溃现场</strong>：异常时打印寄存器组与调用回溯；<code class="inline">CONFIG_PANIC_HANG</code> 挂起便于 JTAG 接入；</li>
+        <li><strong>conitrace</strong>：诊断串口输入码流（按键问题排查）。</li>
+      </ul>
+    </div>
+
+    <h3>POST 上电自检</h3>
+    <div class="card">
+      <p><code class="inline">post/</code> 提供开机自检框架（内存、Cache、I2C、UART 等测试项），
+      <code class="inline">diag</code> 命令手工运行，<code class="inline">CONFIG_POST</code> 系列控制执行时机（普通/热复位/仅手动）。</p>
+    </div>
+    <div class="pager">
+      <button data-go="ui">← 上一章：交互界面</button>
+      <button data-go="sandbox">下一章：沙箱与测试 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 18 sandbox ============ -->
+  <section class="panel" id="sandbox">
+    <div class="sec-title"><span class="idx">18</span>沙箱与测试</div>
+    <div class="sec-sub">Sandbox 架构 · 单元测试 · pytest · fuzz · 独立应用 API</div>
+
+    <h3>Sandbox：主机上的 U-Boot</h3>
+    <div class="card">
+      <p><strong>sandbox</strong>（<code class="inline">arch/sandbox/</code>）把 U-Boot 编译成普通 Linux 进程运行，
+      是开发新功能、跑 CI 的首选平台：</p>
+      <ul>
+        <li>设备全部由"模拟驱动"扮演：模拟 MMC（磁盘文件）、模拟 I2C/SPI 从设备（emul）、模拟显示（SDL/X11 窗口）、模拟网卡（主机 tap）；</li>
+        <li><code class="inline">hostfs</code>：直接访问主机目录；<code class="inline">semihosting</code> 同理；</li>
+        <li><code class="inline">sb</code> 命令族：加载任意镜像执行、退出进程、时钟控制；state 文件保存"重启间状态"；</li>
+        <li>崩溃只影响进程，秒级重编译迭代——重构启动框架、驱动 API 时的安全网。</li>
+      </ul>
+      <pre class="code">$ make sandbox_defconfig &amp;&amp; make -j$(nproc)
+$ ./u-boot                    <span class="cm"># 直接进入 Monitor 提示符</span>
+=&gt; host load hostfs - 1000 zImage   <span class="cm"># 读主机文件</span></pre>
+    </div>
+
+    <h3>测试体系</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>层</th><th>内容</th><th>运行方式</th></tr></thead>
+      <tbody>
+        <tr><td>单元测试</td><td><code class="inline">test/</code> 下数十个套件（dm、env、fs、boot、efi、crypto…）</td><td><code class="inline">ut all</code> / <code class="inline">ut dm</code>（板内）</td></tr>
+        <tr><td>集成测试</td><td><code class="inline">test/py/</code> pytest 套件，覆盖启动流程、命令、EFI、fastboot 等</td><td><code class="inline">./test/py/test.py</code>（CI 常以 sandbox 跑）</td></tr>
+        <tr><td>EFI 自检</td><td>UEFI SCT 风格自测</td><td><code class="inline">bootefi selftest</code></td></tr>
+        <tr><td>模糊测试</td><td>对命令解析、镜像解析等喂随机/畸形输入</td><td><code class="inline">drivers/fuzz</code> + <code class="inline">fuzz</code> 命令</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>独立应用程序与导出 API</h3>
+    <div class="card">
+      <p><code class="inline">examples/standalone/</code> 与 <code class="inline">api/</code> 提供"动态加载程序"能力：
+      用 <code class="inline">tools/mkimage -T standalone</code> 打包的程序可经 <code class="inline">go</code> 命令执行，
+      并通过 <code class="inline">common/exports.c</code> 提供的跳转表（get_time、printf、I2C/SPI/内存访问等 API）
+      复用 U-Boot 已初始化的外设——官方定位：硬件测试等"偶尔使用"的代码不必固化进 Monitor。</p>
+    </div>
+    <div class="pager">
+      <button data-go="debug">← 上一章：调试与诊断</button>
+      <button data-go="build">下一章：构建系统 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 19 build ============ -->
+  <section class="panel" id="build">
+    <div class="sec-title"><span class="idx">19</span>构建系统</div>
+    <div class="sec-sub">Kconfig / Kbuild · binman · 主机工具链 · 1583 个板级配置</div>
+
+    <h3>构建流程</h3>
+    <pre class="code"><span class="cm"># 1) 选定板级默认配置（1583 选 1）</span>
+$ make vexpress_aemv8a_juno_defconfig
+<span class="cm"># 2) 菜单调整（Kconfig 体系，与 Linux 同源）</span>
+$ make menuconfig
+<span class="cm"># 3) 编译（目录外构建推荐）</span>
+$ make O=build -j$(nproc) CROSS_COMPILE=aarch64-linux-gnu-
+<span class="cm"># 产物：</span>
+<span class="cm">#   build/u-boot.bin     主体二进制</span>
+<span class="cm">#   build/u-boot-spl.bin SPL</span>
+<span class="cm">#   build/u-boot.itb     FIT 打包（SPL+主体+TEE，需配置）</span>
+<span class="cm">#   build/u-boot(TPL/镜像名依平台而异)</span></pre>
+
+    <h3>配置体系</h3>
+    <div class="card">
+      <ul>
+        <li><strong>Kconfig</strong>：数千个 <code class="inline">CONFIG_*</code> 选项组成依赖图，菜单化裁剪（最小编译可到几十 KB）；</li>
+        <li><strong>defconfig</strong>：<code class="inline">configs/&lt;board&gt;_defconfig</code> 保存差异片段；<code class="inline">savedefconfig</code> 反向生成最小片段；</li>
+        <li><strong>板级目录</strong>：<code class="inline">board/&lt;vendor&gt;/&lt;board&gt;/</code> 放板级代码，<code class="inline">MAINTAINERS</code> 登记维护者；</li>
+        <li><strong>SPL/TPL/VPL</strong>：同一棵树按 <code class="inline">CONFIG_SPL_*</code> 前缀编译出独立阶段镜像；</li>
+        <li><strong>设备树</strong>：各板 DTS（arch/*/dts）编译为 DTB 链入镜像（OF_SEPARATE / OF_EMBED / of-platdata）。</li>
+      </ul>
+    </div>
+
+    <h3>binman：镜像打包</h3>
+    <div class="card">
+      <p><strong>binman</strong>（<code class="inline">tools/binman/</code>）用设备树描述（image 节点）声明最终固件布局——
+      SPL、U-Boot、BL31(ATF)、TEE、保留区、GPT 表——按描述自动拼装成可烧写镜像，取代各平台手写打包脚本。</p>
+    </div>
+
+    <h3>主机工具（tools/）</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>工具</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">mkimage / dumpimage / fit_check_sign</code></td><td>镜像生成 / 查看 / 验签</td></tr>
+        <tr><td><code class="inline">env tools</code></td><td>fw_printenv / fw_setenv：Linux 侧读写 U-Boot 环境</td></tr>
+        <tr><td><code class="inline">buildman</code></td><td>批量跨板构建（提交前回归）</td></tr>
+        <tr><td><code class="inline">patman</code></td><td>补丁系列发送助手（对接 mailing list 流程）</td></tr>
+        <tr><td><code class="inline">dtoc</code></td><td>设备树 → of-platdata C 代码生成器</td></tr>
+        <tr><td><code class="inline">gdb / kermit / logos / efivar.py</code></td><td>gdb 辅助脚本 / 串口工具 / Logo 生成 / EFI 变量读取</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="callout tip">
+      ✅ 提交流程：checkpatch 检查 → patman 生成补丁系列 → buildman 全板回归 → 发送 u-boot 邮件列表。
+    </div>
+    <div class="pager">
+      <button data-go="sandbox">← 上一章：沙箱与测试</button>
+      <button data-go="cmdref">下一章：命令速查表 →</button>
+    </div>
+  </section>
+
+  <!-- ============ 20 命令速查 ============ -->
+  <section class="panel" id="cmdref">
+    <div class="sec-title"><span class="idx">20</span>命令速查表</div>
+    <div class="sec-sub">cmd/ 目录 210 个命令按用途分类精选 · <code class="inline">help</code> 查看全部</div>
+
+    <h3>信息与系统</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>命令</th><th>功能</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">help / ?</code></td><td>列出全部命令或单个命令用法</td></tr>
+        <tr><td><code class="inline">version</code> / <code class="inline">ufetch</code></td><td>版本信息 / 版本+架构+RAM 概览卡</td></tr>
+        <tr><td><code class="inline">bdinfo</code></td><td>板级信息（内存布局、boot 参数、时钟）</td></tr>
+        <tr><td><code class="inline">coninfo</code> / <code class="inline">cls</code></td><td>控制台设备 / 清屏</td></tr>
+        <tr><td><code class="inline">reset</code> / <code class="inline">resetc</code></td><td>硬复位 / 显示复位原因</td></tr>
+        <tr><td><code class="inline">sleep</code> / <code class="inline">time</code> / <code class="inline">timer</code></td><td>延时 / 计时命令耗时</td></tr>
+        <tr><td><code class="inline">cpu</code> / <code class="inline">smccc</code> / <code class="inline">smbios</code></td><td>CPU 信息 / ARM SMC 调用 / SMBIOS 表</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>内存与数据</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>命令</th><th>功能</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">md / mm / nm / mw</code></td><td>内存显示 / 修改 / 命名修改 / 写入</td></tr>
+        <tr><td><code class="inline">cp / cmp</code></td><td>内存拷贝 / 比较</td></tr>
+        <tr><td><code class="inline">crc32 / cksum / hash / sha1sum / sm3sum</code></td><td>校验和与摘要</td></tr>
+        <tr><td><code class="inline">mtest</code> / <code class="inline">loop</code></td><td>内存压力测试 / 循环读</td></tr>
+        <tr><td><code class="inline">setexpr</code> / <code class="inline">binop</code></td><td>算术与逻辑运算写入变量</td></tr>
+        <tr><td><code class="inline">xxd</code> / <code class="inline">read</code> / <code class="inline">cat</code> / <code class="inline">strings</code> / <code class="inline">printf</code> / <code class="inline">echo</code></td><td>十六进制查看 / 文件读 / 字符串处理 / 格式化输出</td></tr>
+        <tr><td><code class="inline">unzip / unlz4</code> / <code class="inline">zip</code></td><td>内存数据解压 / 压缩</td></tr>
+        <tr><td><code class="inline">itest / test</code></td><td>整数与字符串比较（脚本条件）</td></tr>
+        <tr><td><code class="inline">go</code></td><td>跳转到地址执行独立程序（API 程序入口）</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>环境变量</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>命令</th><th>功能</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">printenv / setenv / editenv / saveenv</code></td><td>查看 / 设置 / 编辑 / 保存环境</td></tr>
+        <tr><td><code class="inline">run</code> / <code class="inline">env</code></td><td>执行变量中的命令 / env 子命令族（default、import、export、ask…）</td></tr>
+        <tr><td><code class="inline">bootd</code></td><td>执行 bootcmd（等于自动启动）</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>启动</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>命令</th><th>功能</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">bootm / booti / bootz / bootefi</code></td><td>启动 uImage/FIT / ARM64 Image / zImage / EFI 程序</td></tr>
+        <tr><td><code class="inline">bootflow / bootdev / bootmeth</code></td><td>标准启动三剑客（scan/list/boot…）</td></tr>
+        <tr><td><code class="inline">sysboot / pxe</code></td><td>extlinux.conf 启动 / 网络 PXE 启动</td></tr>
+        <tr><td><code class="inline">source</code> / <code class="inline">script</code></td><td>执行 boot.scr 脚本镜像 / 从文件系统运行脚本</td></tr>
+        <tr><td><code class="inline">bootmenu</code> / <code class="inline">cedit</code></td><td>启动菜单 / expo 配置编辑器</td></tr>
+        <tr><td><code class="inline">abootimg / adtimg / bcb</code></td><td>Android boot.img 解析 / dtbo / 启动控制块</td></tr>
+        <tr><td><code class="inline">bootcount</code> / <code class="inline">bootstage</code></td><td>启动计数 / 阶段耗时报告</td></tr>
+        <tr><td><code class="inline">elf</code> / <code class="inline">upl</code> / <code class="inline">vbe</code></td><td>ELF 载入执行 / Universal Payload / VBE 状态</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>存储设备</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>命令</th><th>功能</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">mmc</code></td><td>eMMC/SD 全家：dev/info/read/write/erase/rescan/wp/part/bootbus…</td></tr>
+        <tr><td><code class="inline">sf</code></td><td>SPI NOR：probe/read/write/erase/update/protect/test</td></tr>
+        <tr><td><code class="inline">nand</code></td><td>NAND：info/erase/write/read/dump/markbad/bcb…</td></tr>
+        <tr><td><code class="inline">ubi / ubifs*</code></td><td>UBI 卷管理 / UBIFS 文件访问</td></tr>
+        <tr><td><code class="inline">sata / scsi / nvme / ufs / virtio</code></td><td>各高速存储接口枚举与访问</td></tr>
+        <tr><td><code class="inline">part / disk</code></td><td>分区表查看与 GPT 写入</td></tr>
+        <tr><td><code class="inline">blk</code> / <code class="inline">blkmap</code> / <code class="inline">blkcache</code></td><td>块设备底层访问 / 虚拟块映射 / 块缓存统计</td></tr>
+        <tr><td><code class="inline">eeprom / tlv_eeprom / w1</code></td><td>EEPROM 读写 / ONIE TLV 资产 / 1-Wire 总线</td></tr>
+        <tr><td><code class="inline">fuse</code></td><td>OTP 熔丝读写（MAC、密钥哈希）</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>文件系统</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>命令</th><th>功能</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">ls / load / save / write / size</code></td><td>通用 FS API（自动识别格式）</td></tr>
+        <tr><td><code class="inline">fatls / fatload / fatwrite</code></td><td>FAT 专用（兼容旧习惯）</td></tr>
+        <tr><td><code class="inline">ext4ls / ext4load / ext4write</code></td><td>ext4 专用</td></tr>
+        <tr><td><code class="inline">fstype / fsuuid</code></td><td>探测分区文件系统类型 / UUID</td></tr>
+        <tr><td><code class="inline">loadb / loads / loadx / loady</code></td><td>串口 Kermit / S-Record / Xmodem / Ymodem 接收</td></tr>
+        <tr><td><code class="inline">cbfs / sqfs / erofs / btrfs</code> 等</td><td>各只读 FS 的历史专用命令（已被通用 API 覆盖）</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>网络</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>命令</th><th>功能</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">dhcp / bootp / dhcpv6</code></td><td>动态地址获取（v4/v6）</td></tr>
+        <tr><td><code class="inline">tftpboot / nfs / wget</code></td><td>TFTP / NFS / HTTP 下载</td></tr>
+        <tr><td><code class="inline">ping / ping6 / dns / nslookup</code> / <code class="inline">sntp</code></td><td>连通性与名称解析 / 对时</td></tr>
+        <tr><td><code class="inline">mdio / mii</code> / <code class="inline">ethsw</code></td><td>PHY 寄存器访问 / 交换机管理</td></tr>
+        <tr><td><code class="inline">wol</code> / <code class="inline">pcap</code> / <code class="inline">link-local</code></td><td>网络唤醒 / 抓包 / 链路本地地址</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>USB 与下载</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>命令</th><th>功能</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">usb</code></td><td>总线枚举 start/stop/tree/info、存储设备访问</td></tr>
+        <tr><td><code class="inline">dfu</code></td><td>进入 DFU 下载模式（usb/uart/sf/mtd/ram）</td></tr>
+        <tr><td><code class="inline">fastboot</code></td><td>进入 fastboot（usb/udp/tcp）</td></tr>
+        <tr><td><code class="inline">ums</code> / <code class="inline">rockusb</code> / <code class="inline">thordown</code> / <code class="inline">rkmtd</code></td><td>U 盘模式 / Rockchip / 三星 Thor / RK MTD 下载</td></tr>
+        <tr><td><code class="inline">update</code></td><td>自动固件更新流程</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>外设与硬件</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>命令</th><th>功能</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">i2c / i3c</code></td><td>总线扫描、设备读写</td></tr>
+        <tr><td><code class="inline">spi</code></td><td>SPI 传输</td></tr>
+        <tr><td><code class="inline">gpio</code> / <code class="inline">pinmux</code></td><td>GPIO 读写 / 引脚复用状态</td></tr>
+        <tr><td><code class="inline">led / button / adc / pwm / temperature</code></td><td>外设状态与控制</td></tr>
+        <tr><td><code class="inline">clk / reset / dm</code></td><td>时钟树 / 复位控制 / 驱动模型树</td></tr>
+        <tr><td><code class="inline">pci / pcie</code></td><td>PCIe 枚举与配置空间访问</td></tr>
+        <tr><td><code class="inline">date / rtc</code> / <code class="inline">wdt</code></td><td>时间 / RTC / 看门狗</td></tr>
+        <tr><td><code class="inline">pmic / regulator / pmbus</code></td><td>电源芯片读写 / 稳压器控制 / PMBus</td></tr>
+        <tr><td><code class="inline">rng / tpm / avb / scp03</code></td><td>随机数 / TPM / Android 验证 / 安全通道</td></tr>
+        <tr><td><code class="inline">remoteproc</code> / <code class="inline">fpga</code></td><td>协处理器固件加载 / FPGA 比特流加载</td></tr>
+        <tr><td><code class="inline">cros_ec / qfw / scmi / axi</code></td><td>ChromeOS EC / QEMU 固件 / SCMI / AXI 访问</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>调试与其他</h3>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>命令</th><th>功能</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">log</code> / <code class="inline">trace</code> / <code class="inline">iotrace</code> / <code class="inline">conitrace</code></td><td>日志 / 函数追踪 / IO 追踪 / 输入码追踪</td></tr>
+        <tr><td><code class="inline">event</code> / <code class="inline">cyclic</code></td><td>事件钩子列表 / 后台循环任务</td></tr>
+        <tr><td><code class="inline">pstore</code> / <code class="inline">diag</code> / <code class="inline">post</code></td><td>崩溃记录 / POST 诊断</td></tr>
+        <tr><td><code class="inline">fdt</code> / <code class="inline">addrmap</code> / <code class="inline">reginfo</code></td><td>设备树操作 / 地址映射 / 寄存器信息</td></tr>
+        <tr><td><code class="inline">efidebug / eficonfig</code></td><td>EFI 变量与启动项调试 / EFI 图形配置菜单</td></tr>
+        <tr><td><code class="inline">exit</code> / <code class="inline">spawn</code> / <code class="inline">cli</code></td><td>脚本退出 / 派生解释器 / CLI 信息</td></tr>
+        <tr><td><code class="inline">bmp</code> / <code class="inline">video</code> / <code class="inline">sound</code> / <code class="inline">terminal</code></td><td>图片显示 / 视频 / 声音 / 终端控制</td></tr>
+        <tr><td><code class="inline">ut</code> / <code class="inline">sb</code> / <code class="inline">fuzz</code> / <code class="inline">demo</code> / <code class="inline">2048</code></td><td>单元测试 / 沙箱控制 / 模糊测试 / 示例驱动 / 彩蛋小游戏</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="callout info">
+      💡 以上为精选高频命令；完整清单在板卡串口里输入 <code class="inline">help</code> 查看，
+      各命令的子命令用 <code class="inline">help &lt;命令&gt;</code> 获取；源码位于 <code class="inline">cmd/*.c</code>。
+    </div>
+    <div class="pager">
+      <button data-go="build">← 上一章：构建系统</button>
+      <button disabled>已到最后一章</button>
+    </div>
+  </section>
+
+  </div><!-- /content -->
+
+  <footer class="doc-footer">
+    U-Boot 功能全解析 · 基于 v2026.10 源码树（/home/zhp/code/u-boot-v2026.10）整理 ·
+    U-Boot 以 GPL-2.0+ 发布，版权归 U-Boot 项目及各贡献者所有
+  </footer>
+</div><!-- /main -->
+
+<script>
+(function () {
+  var navItems = Array.prototype.slice.call(document.querySelectorAll('.nav-item'));
+  var panels   = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+  var order    = navItems.map(function (n) { return n.getAttribute('data-tab'); });
+
+  function setTitle() {
+    var active = document.querySelector('.nav-item.active');
+    var bar = document.querySelector('.mobile-bar b');
+    if (active && bar) bar.textContent = 'U-Boot · ' + active.textContent.trim();
+  }
+
+  function switchTab(id) {
+    if (order.indexOf(id) === -1) id = 'overview';
+    panels.forEach(function (p) { p.classList.toggle('active', p.id === id); });
+    navItems.forEach(function (n) { n.classList.toggle('active', n.getAttribute('data-tab') === id); });
+    history.replaceState(null, '', '#' + id);
+    window.scrollTo({ top: 0 });
+    setTitle();
+    var act = document.querySelector('.nav-item.active');
+    if (act) {
+      var box = document.getElementById('sidebar');
+      var top = act.offsetTop - box.offsetHeight / 2 + act.offsetHeight / 2;
+      if (box.scrollTo) box.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    }
+    if (window.innerWidth <= 960) document.getElementById('sidebar').classList.remove('open');
+  }
+
+  navItems.forEach(function (n) {
+    n.addEventListener('click', function () { switchTab(n.getAttribute('data-tab')); });
+  });
+
+  /* 翻页按钮 */
+  document.querySelectorAll('.pager button[data-go]').forEach(function (b) {
+    b.addEventListener('click', function () { switchTab(b.getAttribute('data-go')); });
+  });
+
+  /* 侧边栏筛选 */
+  document.getElementById('navFilter').addEventListener('input', function () {
+    var q = this.value.trim().toLowerCase();
+    var lastGroup = null;
+    document.querySelectorAll('#sideNav > *').forEach(function (el) {
+      if (el.classList.contains('nav-group')) { el.style.display = ''; return; }
+      var hit = !q || el.textContent.toLowerCase().indexOf(q) !== -1;
+      el.style.display = hit ? '' : 'none';
+    });
+  });
+
+  /* 移动端菜单 */
+  document.getElementById('menuBtn').addEventListener('click', function () {
+    document.getElementById('sidebar').classList.toggle('open');
+  });
+
+  /* 初始 hash 定位 */
+  var h = location.hash.replace('#', '');
+  switchTab(h || 'overview');
+})();
+</script>
+</body>
+</html>

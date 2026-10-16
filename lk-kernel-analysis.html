@@ -1,0 +1,2377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LK (Little Kernel) 内核源码分析</title>
+<meta name="description" content="LK 内核深度分析文档：架构、启动流程、线程调度、同步原语、内存管理、中断、驱动、文件系统与 RTOS 适用性评估">
+<style>
+/* ============================================================
+   LK 内核分析文档 — 设计系统
+   配色基于已验证的无障碍数据可视化调色板（明/暗两套）
+   ============================================================ */
+:root {
+    color-scheme: light;
+    /* 页面与表面 */
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --code-bg: #1a1a19;
+    --code-ink: #e8e6df;
+    /* 文字 */
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    /* 线与网格 */
+    --grid: #e1e0d9;
+    --line: #c3c2b7;
+    --ring: rgba(11, 11, 11, 0.10);
+    /* 系列（图表/图示功能色） */
+    --c1: #2a78d6;  /* 蓝  — 内核核心 */
+    --c2: #eb6834;  /* 橙  — 硬件/平台 */
+    --c3: #1baf7a;  /* 青绿 — 系统库 */
+    --c4: #eda100;  /* 黄  — 应用 */
+    --c5: #e87ba4;  /* 品红 */
+    --c6: #008300;  /* 绿 */
+    --c7: #6250d6;  /* 紫  — 存储/文件系统 */
+    --c8: #e34948;  /* 红  — 中断/危险 */
+    /* 功能色浅底（图示填充） */
+    --t1: rgba(42, 120, 214, 0.13);
+    --t2: rgba(235, 104, 52, 0.13);
+    --t3: rgba(27, 175, 122, 0.13);
+    --t4: rgba(237, 161, 0, 0.16);
+    --t7: rgba(98, 80, 214, 0.12);
+    --t8: rgba(227, 73, 72, 0.12);
+    --tgray: rgba(137, 135, 129, 0.14);
+    /* 状态色（固定语义，仅用于 ✓/✗/警示） */
+    --good: #0ca30c;
+    --good-ink: #006300;
+    --warn: #fab219;
+    --crit: #d03b3b;
+    --crit-ink: #b02a2a;
+    /* 侧边栏（浅灰） */
+    --side-bg: #e9e9e5;
+    --side-bg-2: #f3f3f0;
+    --side-ink: #1c1c1a;
+    --side-ink-2: #74736d;
+    --side-active: rgba(42, 120, 214, 0.12);
+    --side-active-ink: #1c5cab;
+    --side-hover: rgba(11, 11, 11, 0.05);
+    --side-line: rgba(11, 11, 11, 0.10);
+    --side-input-bg: rgba(255, 255, 255, 0.66);
+    --side-input-focus: rgba(42, 120, 214, 0.55);
+    --side-scroll: rgba(0, 0, 0, 0.22);
+    /* 布局 */
+    --side-w: 292px;
+    --shadow: 0 1px 2px rgba(11, 11, 11, 0.04), 0 4px 16px rgba(11, 11, 11, 0.05);
+    --shadow-lg: 0 4px 12px rgba(11, 11, 11, 0.07), 0 12px 36px rgba(11, 11, 11, 0.09);
+}
+html[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --code-bg: #101010;
+    --code-ink: #dedcd4;
+    --ink: #f0efec;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --line: #383835;
+    --ring: rgba(255, 255, 255, 0.10);
+    --c1: #3987e5;
+    --c2: #d95926;
+    --c3: #199e70;
+    --c4: #c98500;
+    --c5: #d55181;
+    --c6: #008300;
+    --c7: #9085e9;
+    --c8: #e66767;
+    --t1: rgba(57, 135, 229, 0.20);
+    --t2: rgba(217, 89, 38, 0.20);
+    --t3: rgba(25, 158, 112, 0.20);
+    --t4: rgba(201, 133, 0, 0.20);
+    --t7: rgba(144, 133, 233, 0.18);
+    --t8: rgba(230, 103, 103, 0.16);
+    --tgray: rgba(137, 135, 129, 0.16);
+    --good: #0ca30c;
+    --good-ink: #0ca30c;
+    --crit: #e66767;
+    --crit-ink: #e66767;
+    --side-bg: #101318;
+    --side-bg-2: #151923;
+    --side-ink: #e6e5de;
+    --side-ink-2: #8b8d96;
+    --side-active: rgba(57, 135, 229, 0.16);
+    --side-active-ink: #cfe2fb;
+    --side-hover: rgba(255, 255, 255, 0.055);
+    --side-line: rgba(255, 255, 255, 0.08);
+    --side-input-bg: rgba(255, 255, 255, 0.055);
+    --side-input-focus: rgba(57, 135, 229, 0.6);
+    --side-scroll: rgba(255, 255, 255, 0.14);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.25);
+    --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.35), 0 12px 36px rgba(0, 0, 0, 0.4);
+}
+@media (prefers-color-scheme: dark) {
+    html:not([data-theme]) {
+        color-scheme: dark;
+        --page: #0d0d0d; --surface: #1a1a19; --code-bg: #101010; --code-ink: #dedcd4;
+        --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+        --grid: #2c2c2a; --line: #383835; --ring: rgba(255,255,255,0.10);
+        --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500;
+        --c5: #d55181; --c6: #008300; --c7: #9085e9; --c8: #e66767;
+        --t1: rgba(57,135,229,0.20); --t2: rgba(217,89,38,0.20); --t3: rgba(25,158,112,0.20);
+        --t4: rgba(201,133,0,0.20); --t7: rgba(144,133,233,0.18); --t8: rgba(230,103,103,0.16);
+        --tgray: rgba(137,135,129,0.16);
+        --good-ink: #0ca30c; --crit: #e66767; --crit-ink: #e66767;
+        --side-bg: #101318; --side-bg-2: #151923;
+        --side-ink: #e6e5de; --side-ink-2: #8b8d96;
+        --side-active: rgba(57,135,229,0.16); --side-active-ink: #cfe2fb;
+        --side-hover: rgba(255,255,255,0.055); --side-line: rgba(255,255,255,0.08);
+        --side-input-bg: rgba(255,255,255,0.055); --side-input-focus: rgba(57,135,229,0.6);
+        --side-scroll: rgba(255,255,255,0.14);
+        --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.25);
+        --shadow-lg: 0 4px 12px rgba(0,0,0,0.35), 0 12px 36px rgba(0,0,0,0.4);
+    }
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    background: var(--page);
+    color: var(--ink);
+    font-size: 15.5px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ============ 侧边栏 ============ */
+.sidebar {
+    position: fixed; inset: 0 auto 0 0;
+    width: var(--side-w);
+    background: linear-gradient(180deg, var(--side-bg-2) 0%, var(--side-bg) 260px);
+    border-right: 1px solid var(--side-line);
+    display: flex; flex-direction: column;
+    z-index: 50;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--side-scroll) transparent;
+}
+.brand {
+    display: flex; align-items: center; gap: 12px;
+    padding: 22px 20px 16px;
+}
+.brand-mark {
+    width: 42px; height: 42px; flex: none;
+    border-radius: 11px;
+    background: linear-gradient(135deg, #2a78d6, #6250d6);
+    display: grid; place-items: center;
+    box-shadow: 0 4px 14px rgba(42, 120, 214, 0.35);
+}
+.brand-mark svg { display: block; }
+.brand-name { font-size: 17px; font-weight: 700; color: var(--ink); letter-spacing: 0.2px; line-height: 1.25; }
+.brand-sub { font-size: 11.5px; color: var(--side-ink-2); line-height: 1.4; margin-top: 2px; }
+.side-search { padding: 4px 16px 12px; }
+.side-search input {
+    width: 100%;
+    background: var(--side-input-bg);
+    border: 1px solid var(--side-line);
+    border-radius: 8px;
+    color: var(--side-ink);
+    font-size: 13px;
+    padding: 8px 12px 8px 32px;
+    outline: none;
+    transition: border-color .15s, background .15s;
+    font-family: inherit;
+}
+.side-search input:focus { border-color: var(--side-input-focus); background: var(--surface); }
+.side-search input::placeholder { color: var(--side-ink-2); }
+.side-search { position: relative; }
+.side-search::before {
+    content: ""; position: absolute; left: 28px; top: 15px;
+    width: 14px; height: 14px;
+    border: 1.6px solid var(--side-ink-2); border-radius: 50%;
+    box-shadow: 0 3.5px 0 -1px var(--side-ink-2);
+    pointer-events: none;
+}
+.nav { padding: 4px 10px 30px; }
+.nav-group {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em;
+    color: var(--side-ink-2);
+    text-transform: uppercase;
+    padding: 16px 12px 6px;
+}
+.nav a {
+    display: flex; align-items: baseline; gap: 9px;
+    padding: 6.5px 12px;
+    border-radius: 7px;
+    color: var(--side-ink);
+    text-decoration: none;
+    font-size: 13.5px;
+    line-height: 1.45;
+    border-left: 2px solid transparent;
+    transition: background .12s, color .12s;
+}
+.nav a .no {
+    font-size: 10.5px; font-weight: 600; color: var(--side-ink-2);
+    font-variant-numeric: tabular-nums;
+    min-width: 15px;
+}
+.nav a:hover { background: var(--side-hover); color: var(--ink); }
+.nav a.active {
+    background: var(--side-active);
+    color: var(--side-active-ink);
+    border-left-color: var(--c1);
+    font-weight: 600;
+}
+.nav a.active .no { color: var(--side-active-ink); }
+.nav a.hidden-by-search { display: none; }
+.side-foot {
+    margin-top: auto; padding: 14px 20px 18px;
+    border-top: 1px solid var(--side-line);
+    font-size: 11px; color: var(--side-ink-2); line-height: 1.6;
+}
+
+/* ============ 顶栏与主区 ============ */
+.main-wrap { margin-left: var(--side-w); min-height: 100vh; }
+.topbar {
+    position: sticky; top: 0; z-index: 40;
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 28px;
+    background: color-mix(in srgb, var(--page) 86%, transparent);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--ring);
+}
+.topbar .crumb { font-size: 13px; color: var(--muted); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.topbar .crumb b { color: var(--ink-2); font-weight: 600; }
+.topbar-actions { margin-left: auto; display: flex; gap: 8px; }
+.icon-btn {
+    width: 34px; height: 34px; border-radius: 8px;
+    border: 1px solid var(--ring);
+    background: var(--surface);
+    color: var(--ink-2);
+    display: grid; place-items: center;
+    cursor: pointer; font-size: 15px;
+    transition: all .15s;
+}
+.icon-btn:hover { color: var(--ink); border-color: var(--line); transform: translateY(-1px); }
+.menu-btn { display: none; }
+
+.content { max-width: 950px; margin: 0 auto; padding: 40px 40px 90px; }
+
+/* ============ 章节标题 ============ */
+.sec { margin: 0 0 78px; scroll-margin-top: 70px; }
+.sec-head { display: flex; align-items: center; gap: 14px; margin: 0 0 6px; }
+.sec-no {
+    flex: none; width: 44px; height: 44px; border-radius: 12px;
+    display: grid; place-items: center;
+    font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums;
+    color: #fff;
+    background: linear-gradient(135deg, var(--c1), color-mix(in srgb, var(--c1) 60%, var(--c7)));
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--c1) 35%, transparent);
+}
+.sec h2 { font-size: 27px; font-weight: 800; letter-spacing: 0.2px; margin: 0; line-height: 1.3; }
+.sec-lede { color: var(--ink-2); font-size: 15.5px; margin: 10px 0 24px; max-width: 72ch; }
+h3 {
+    font-size: 18.5px; font-weight: 700; margin: 40px 0 12px;
+    padding-left: 13px; border-left: 3.5px solid var(--c1);
+    scroll-margin-top: 70px; line-height: 1.4;
+}
+h4 { font-size: 15.5px; font-weight: 700; margin: 26px 0 8px; color: var(--ink); }
+p { margin: 0 0 14px; }
+a { color: var(--c1); text-decoration: none; }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 24px; margin: 0 0 14px; }
+li { margin: 4px 0; }
+strong { font-weight: 700; }
+hr { border: none; border-top: 1px solid var(--grid); margin: 30px 0; }
+
+/* ============ 卡片 ============ */
+.card {
+    background: var(--surface);
+    border: 1px solid var(--ring);
+    border-radius: 14px;
+    padding: 22px 26px;
+    margin: 18px 0;
+    box-shadow: var(--shadow);
+}
+.card > :first-child { margin-top: 0; }
+.card > :last-child { margin-bottom: 0; }
+
+/* ============ KPI 统计块 ============ */
+.kpi-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 14px; margin: 24px 0;
+}
+.kpi {
+    background: var(--surface);
+    border: 1px solid var(--ring);
+    border-radius: 13px;
+    padding: 16px 18px 14px;
+    box-shadow: var(--shadow);
+}
+.kpi .v { font-size: 27px; font-weight: 750; line-height: 1.15; letter-spacing: -0.01em; }
+.kpi .l { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; }
+.kpi .d { font-size: 11.5px; color: var(--muted); margin-top: 5px; }
+.kpi .d .up { color: var(--good-ink); font-weight: 600; }
+
+/* ============ 徽章 ============ */
+.badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.badge {
+    font-size: 12px; font-weight: 600;
+    padding: 4px 11px; border-radius: 999px;
+    border: 1px solid var(--ring);
+    background: var(--surface);
+    color: var(--ink-2);
+    box-shadow: var(--shadow);
+}
+.badge.b1 { color: var(--c1); border-color: color-mix(in srgb, var(--c1) 35%, transparent); background: var(--t1); }
+.badge.b2 { color: var(--c2); border-color: color-mix(in srgb, var(--c2) 35%, transparent); background: var(--t2); }
+.badge.b3 { color: var(--c3); border-color: color-mix(in srgb, var(--c3) 35%, transparent); background: var(--t3); }
+.badge.b4 { color: color-mix(in srgb, var(--c4) 78%, black)); border-color: color-mix(in srgb, var(--c4) 40%, transparent); background: var(--t4); }
+html[data-theme="dark"] .badge.b4 { color: var(--c4); }
+
+/* ============ 表格 ============ */
+.tbl-wrap { overflow-x: auto; margin: 16px 0; border: 1px solid var(--ring); border-radius: 12px; box-shadow: var(--shadow); background: var(--surface); }
+table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; line-height: 1.55; }
+.tbl th {
+    text-align: left; font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--muted); font-weight: 700;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--grid);
+    background: color-mix(in srgb, var(--page) 55%, var(--surface));
+    white-space: nowrap;
+}
+.tbl td { padding: 10px 14px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+.tbl tr:last-child td { border-bottom: none; }
+.tbl tr.rowhero td { background: var(--t1); font-weight: 600; }
+.tbl td.num, .tbl th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ============ 代码块 ============ */
+.codewrap {
+    margin: 16px 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--ring);
+    box-shadow: var(--shadow);
+    background: var(--code-bg);
+}
+.codebar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px;
+    background: rgba(255,255,255,0.045);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.codebar .dots { display: flex; gap: 6px; }
+.codebar .dots i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,0.14); }
+.codebar .fname {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 12px; color: #9d9c93; margin-left: 4px;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.codebar .copy {
+    margin-left: auto; font-size: 11.5px; color: #9d9c93;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px; padding: 3px 10px; cursor: pointer;
+    font-family: inherit; transition: all .15s;
+}
+.codebar .copy:hover { color: #e8e6df; background: rgba(255,255,255,0.12); }
+pre.code {
+    margin: 0; padding: 15px 18px;
+    overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 12.8px; line-height: 1.68;
+    color: var(--code-ink);
+    tab-size: 4;
+}
+pre.code code { font: inherit; }
+/* 语法着色（技术配色，非数据色） */
+.tk-kw { color: #82b4f2; }
+.tk-ty { color: #5fc9a2; }
+.tk-st { color: #e5b366; }
+.tk-cm { color: #7e7d76; font-style: italic; }
+.tk-pp { color: #a99cf0; }
+.tk-nm { color: #ecabd0; }
+code.inline, p code, li code, td code, h3 code, h4 code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.86em;
+    background: var(--tgray);
+    border: 1px solid var(--ring);
+    border-radius: 5px;
+    padding: 1px 6px;
+    color: var(--ink);
+    white-space: nowrap;
+}
+
+/* ============ 提示框 ============ */
+.note {
+    display: flex; gap: 12px; align-items: flex-start;
+    border-radius: 12px; padding: 14px 18px;
+    margin: 16px 0; font-size: 14px; line-height: 1.65;
+    border: 1px solid;
+}
+.note .ic { flex: none; font-size: 16px; line-height: 1.5; }
+.note.info { background: var(--t1); border-color: color-mix(in srgb, var(--c1) 30%, transparent); }
+.note.warn { background: var(--t4); border-color: color-mix(in srgb, var(--c4) 40%, transparent); }
+.note.crit { background: var(--t8); border-color: color-mix(in srgb, var(--c8) 30%, transparent); }
+.note.good { background: color-mix(in srgb, var(--good) 10%, transparent); border-color: color-mix(in srgb, var(--good) 30%, transparent); }
+.note b { font-weight: 700; }
+
+/* ============ 图示 ============ */
+.fig {
+    margin: 22px 0;
+    background: var(--surface);
+    border: 1px solid var(--ring);
+    border-radius: 14px;
+    padding: 20px 20px 12px;
+    box-shadow: var(--shadow);
+    overflow-x: auto;
+}
+.fig svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+.fig figcaption {
+    font-size: 12.5px; color: var(--muted);
+    text-align: center; padding: 10px 8px 6px;
+    border-top: 1px dashed var(--grid); margin-top: 12px;
+}
+.fig figcaption b { color: var(--ink-2); font-weight: 600; }
+/* SVG 通用元素 */
+.fig text { font-family: inherit; fill: var(--ink); }
+.fig .t2 { fill: var(--ink-2); }
+.fig .t3 { fill: var(--muted); }
+.fig .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; rx: 8; }
+.fig .lbl { font-size: 12.5px; font-weight: 650; }
+.fig .sm { font-size: 11px; }
+.fig .xs { font-size: 10.2px; }
+.fig .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+.fig .arr { stroke: var(--ink-2); stroke-width: 1.4; fill: none; marker-end: url(#ah); }
+.fig .arrc1 { stroke: var(--c1); stroke-width: 1.6; fill: none; marker-end: url(#ah1); }
+.fig .arrc8 { stroke: var(--c8); stroke-width: 1.6; fill: none; marker-end: url(#ah8); }
+.fig .dash { stroke-dasharray: 5 4; }
+
+/* ============ 图表 ============ */
+.chart-card {
+    background: var(--surface); border: 1px solid var(--ring);
+    border-radius: 14px; box-shadow: var(--shadow);
+    padding: 20px 24px 14px; margin: 22px 0;
+}
+.chart-title { font-size: 15.5px; font-weight: 700; margin: 0 0 2px; }
+.chart-sub { font-size: 12.5px; color: var(--muted); margin: 0 0 14px; }
+.chart-card svg { display: block; width: 100%; height: auto; }
+.chart-card .axis { stroke: var(--line); stroke-width: 1; }
+.chart-card .gridln { stroke: var(--grid); stroke-width: 1; }
+.chart-card text { font-family: inherit; }
+.chart-card .bar { cursor: pointer; transition: opacity .12s; }
+.chart-card .bar:hover { opacity: 0.82; }
+.chart-card .barr {
+    transition: opacity .12s;
+}
+.chart-card .row:hover .barr { opacity: 0.82; }
+.chart-tbl-toggle {
+    font-size: 12px; color: var(--muted); background: none;
+    border: none; cursor: pointer; padding: 8px 0 2px; font-family: inherit;
+}
+.chart-tbl-toggle:hover { color: var(--ink-2); text-decoration: underline; }
+.chart-tbl { display: none; margin-top: 8px; }
+.chart-tbl.show { display: block; }
+
+/* ============ 网格布局小卡片 ============ */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.mini {
+    background: var(--surface); border: 1px solid var(--ring);
+    border-radius: 12px; padding: 16px 18px;
+    box-shadow: var(--shadow);
+}
+.mini h5 { margin: 0 0 8px; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.mini h5 .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.mini p, .mini ul { font-size: 13px; color: var(--ink-2); margin: 0; }
+.mini ul { padding-left: 18px; }
+.mini li { margin: 3px 0; }
+
+/* ============ 评价（✓/✗） ============ */
+.ok-item, .no-item { display: flex; gap: 10px; margin: 9px 0; font-size: 14px; align-items: baseline; }
+.ok-item .si, .no-item .si { flex: none; font-weight: 800; font-size: 13px; width: 16px; text-align: center; }
+.ok-item .si { color: var(--good-ink); }
+.no-item .si { color: var(--crit-ink); }
+.ok-item b, .no-item b { font-weight: 650; }
+
+/* ============ 时间线（init 层级等） ============ */
+.tl { border-left: 2px solid var(--grid); margin: 14px 0 6px 6px; padding-left: 22px; }
+.tl-item { position: relative; padding-bottom: 15px; }
+.tl-item::before {
+    content: ""; position: absolute; left: -28.5px; top: 6px;
+    width: 11px; height: 11px; border-radius: 50%;
+    background: var(--surface); border: 2.5px solid var(--c1);
+}
+.tl-item .tl-h { font-size: 14px; font-weight: 650; }
+.tl-item .tl-h code { font-size: 12px; }
+.tl-item .tl-b { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
+
+/* ============ 其他 ============ */
+.hero {
+    padding: 46px 44px 40px;
+    border-radius: 18px;
+    background:
+        radial-gradient(680px 300px at 12% -8%, color-mix(in srgb, var(--c1) 16%, transparent), transparent 62%),
+        radial-gradient(560px 280px at 92% 0%, color-mix(in srgb, var(--c7) 13%, transparent), transparent 60%),
+        var(--surface);
+    border: 1px solid var(--ring);
+    box-shadow: var(--shadow-lg);
+    margin-bottom: 40px;
+}
+.hero .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c1); margin-bottom: 10px; }
+.hero h1 { font-size: 34px; line-height: 1.22; margin: 0 0 12px; font-weight: 830; letter-spacing: -0.01em; }
+.hero .sub { font-size: 15.5px; color: var(--ink-2); max-width: 62ch; margin: 0 0 18px; }
+.footer {
+    border-top: 1px solid var(--grid); margin-top: 30px; padding-top: 22px;
+    font-size: 12.5px; color: var(--muted); line-height: 1.8;
+}
+.tooltip {
+    position: fixed; z-index: 100; pointer-events: none;
+    background: var(--ink); color: var(--page);
+    font-size: 12px; font-weight: 600;
+    padding: 5px 10px; border-radius: 7px;
+    box-shadow: var(--shadow-lg);
+    opacity: 0; transform: translateY(3px);
+    transition: opacity .12s, transform .12s;
+    white-space: nowrap;
+}
+.tooltip.show { opacity: 1; transform: translateY(0); }
+#overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 45; }
+
+/* ============ 响应式 ============ */
+@media (max-width: 1060px) {
+    .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 960px) {
+    .sidebar { transform: translateX(-102%); transition: transform .22s ease; box-shadow: var(--shadow-lg); }
+    .sidebar.open { transform: translateX(0); }
+    .main-wrap { margin-left: 0; }
+    .menu-btn { display: grid; }
+    .content { padding: 26px 20px 70px; }
+    .grid2, .grid3 { grid-template-columns: 1fr; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .hero { padding: 30px 24px; }
+    .hero h1 { font-size: 27px; }
+    .sec h2 { font-size: 22px; }
+}
+@media (max-width: 560px) {
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+    .content { padding: 20px 14px 60px; }
+}
+@media print {
+    .sidebar, .topbar, .menu-btn, .chart-tbl-toggle, .codebar .copy { display: none !important; }
+    .main-wrap { margin: 0; }
+    .content { max-width: none; padding: 0; }
+    .card, .fig, .chart-card, .kpi { box-shadow: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ 侧边栏 ============ -->
+<aside class="sidebar" id="sidebar" aria-label="文档导航">
+    <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <rect x="3" y="9" width="7" height="12" rx="1.6" fill="#fff" fill-opacity="0.94"/>
+                <rect x="14" y="3" width="7" height="8" rx="1.6" fill="#fff" fill-opacity="0.94"/>
+                <rect x="14" y="14" width="7" height="7" rx="1.6" fill="#fff" fill-opacity="0.6"/>
+                <path d="M6.5 13.5v4M17.5 5.5v3" stroke="#2a78d6" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+        </div>
+        <div>
+            <div class="brand-name">LK 内核分析</div>
+            <div class="brand-sub">Little Kernel · 源码深度解析</div>
+        </div>
+    </div>
+    <div class="side-search">
+        <input type="search" id="navFilter" placeholder="过滤章节…" aria-label="过滤章节">
+    </div>
+    <nav class="nav" id="nav">
+        <div class="nav-group">开始</div>
+        <a href="#overview"><span class="no">01</span>项目概览</a>
+        <div class="nav-group">系统设计</div>
+        <a href="#arch"><span class="no">02</span>总体架构</a>
+        <a href="#build"><span class="no">03</span>构建系统</a>
+        <a href="#boot"><span class="no">04</span>启动流程</a>
+        <div class="nav-group">内核核心</div>
+        <a href="#thread"><span class="no">05</span>线程与调度</a>
+        <a href="#sync"><span class="no">06</span>同步原语</a>
+        <a href="#mem"><span class="no">07</span>内存管理</a>
+        <a href="#timer"><span class="no">08</span>定时器</a>
+        <a href="#irq"><span class="no">09</span>中断与 SMP</a>
+        <div class="nav-group">驱动与生态</div>
+        <a href="#drivers"><span class="no">10</span>设备与 IO 栈</a>
+        <a href="#fs"><span class="no">11</span>文件系统</a>
+        <a href="#apps"><span class="no">12</span>应用与 Shell</a>
+        <a href="#test"><span class="no">13</span>测试体系</a>
+        <div class="nav-group">结论</div>
+        <a href="#rtos"><span class="no">14</span>RTOS 适用性评估</a>
+        <a href="#summary"><span class="no">15</span>总结与速查</a>
+    </nav>
+    <div class="side-foot">
+        基于 lk 仓库 master 分支<br>commit <span style="font-family:ui-monospace,monospace">9bd0b453</span> · 2026-10</div>
+</aside>
+<div id="overlay"></div>
+
+<div class="main-wrap">
+    <div class="topbar">
+        <button class="icon-btn menu-btn" id="menuBtn" aria-label="打开导航">☰</button>
+        <div class="crumb" id="crumb"><b>LK 内核分析</b> / 项目概览</div>
+        <div class="topbar-actions">
+            <button class="icon-btn" id="themeBtn" aria-label="切换明暗主题" title="切换明暗主题">◐</button>
+            <a class="icon-btn" href="#overview" aria-label="回到顶部" title="回到顶部" style="text-decoration:none">↑</a>
+        </div>
+    </div>
+
+    <div class="content">
+
+    <!-- ================= 01 项目概览 ================= -->
+    <section class="sec" id="overview">
+        <div class="hero">
+            <div class="eyebrow">Little Kernel · Embedded OS Kernel</div>
+            <h1>LK 内核源码分析文档</h1>
+            <p class="sub">LK 是一个小型、SMP 感知的嵌入式操作系统内核，运行于多样 32/64 位架构的监督模式（supervisor mode）之上，
+            被广泛用于嵌入式系统——最著名的角色是 <strong>Android 引导加载程序（bootloader）</strong>。
+            本文档基于对其源码的逐子系统分析，覆盖架构分层、启动流程、线程调度、同步原语、内存管理、中断、驱动与文件系统，并给出"能否作为 RTOS 使用"的结论。</p>
+            <div class="badge-row">
+                <span class="badge b1">抢占式多线程</span>
+                <span class="badge b1">32 级优先级调度</span>
+                <span class="badge b2">7 个架构族 · 40 个平台</span>
+                <span class="badge b3">MMU / no-MMU 双形态</span>
+                <span class="badge b3">SMP 多核</span>
+                <span class="badge b4">MIT 协议</span>
+            </div>
+        </div>
+
+        <div class="kpi-grid">
+            <div class="kpi"><div class="v">19.0万</div><div class="l">自研代码行数（C / 汇编 / C++）</div><div class="d">另有 external/ 引入第三方代码约 162 万行</div></div>
+            <div class="kpi"><div class="v">272</div><div class="l">构建模块（rules.mk）</div><div class="d">lib 86 · target 51 · platform 40 · dev 30</div></div>
+            <div class="kpi"><div class="v">3,400+</div><div class="l">源文件</div><div class="d">1,315 个 .c · 1,961 个 .h · 122 个 .S</div></div>
+            <div class="kpi"><div class="v">7 / 40</div><div class="l">架构族 / 平台</div><div class="d">arm · arm64 · riscv · x86 · m68k · mips · vax(实验)</div></div>
+            <div class="kpi"><div class="v">66</div><div class="l">预置工程（project/*.mk）</div><div class="d">51 个目标板（target/）可直接构建</div></div>
+            <div class="kpi"><div class="v">18 年</div><div class="l">持续开发历史</div><div class="d">2008-09 至 2026-10 · <span class="up">3,701 次提交</span></div></div>
+        </div>
+
+        <h3>LK 是什么</h3>
+        <p>LK（Little Kernel）由 Travis Geiselbrecht 于 2008 年发起，与 NewOS、Fuchsia 的 Zircon 内核同源。它的定位是
+        <strong>"小而完整的内核"</strong>：拥有与成熟内核同构的线程调度、同步原语、虚拟内存管理和驱动栈，但全部运行在单一特权地址空间中，
+        没有用户态/内核态隔离。这种"监督模式单体"形态恰好是传统 RTOS 的形态——也是它被广泛用于 Android bootloader、
+        Google GBL 等固件场景的原因。</p>
+        <p>语言构成为 C 为主、少量汇编与受限 C++17 子集（<code>lib/libcpp</code> 提供免异常/免 RTTI 的标准库子集，
+        <code>lib/lktl</code> 提供 LK 自研的侵入式链表、<code>function_ref</code> 等工具），并可选启用 Rust 支持（<code>USE_RUST=1</code>）。</p>
+
+        <h3>代码规模分布</h3>
+        <p>自研代码（不含 external/ 第三方）约 19 万行，规模分布如下图。系统库 <code>lib/</code> 占比最大（71K 行）——
+        libc、文件系统、块设备层、控制台等"内核之上的服务体系"是这个内核的主要体量；体系结构与平台移植层合计约 7 万行，
+        反映其"多架构可移植"的核心卖点；真正的内核核心 <code>kernel/</code> 与 <code>top/</code> 只有约 1.1 万行，<strong>小而紧凑</strong>。</p>
+
+        <div class="chart-card" id="chartLoc">
+            <div class="chart-title">LK 自研代码规模分布</div>
+            <div class="chart-sub">按顶层目录统计的 C / C++ / 汇编代码行数 · 共 189,876 行（不含 external/ 第三方代码）</div>
+        </div>
+
+        <div class="chart-card" id="chartMod">
+            <div class="chart-title">构建模块数量分布</div>
+            <div class="chart-sub">每个含 rules.mk 的目录计为一个模块 · 全树共 272 个</div>
+        </div>
+
+        <h3>阅读路线建议</h3>
+        <div class="grid3">
+            <div class="mini">
+                <h5><span class="dot" style="background:var(--c1)"></span>理解骨架</h5>
+                <ul>
+                    <li>第 2 章 分层架构</li>
+                    <li>第 3 章 构建系统</li>
+                    <li>第 4 章 启动流程</li>
+                </ul>
+            </div>
+            <div class="mini">
+                <h5><span class="dot" style="background:var(--c3)"></span>深入内核</h5>
+                <ul>
+                    <li>第 5 章 线程与调度</li>
+                    <li>第 6 章 同步原语</li>
+                    <li>第 7 章 内存管理</li>
+                </ul>
+            </div>
+            <div class="mini">
+                <h5><span class="dot" style="background:var(--c4)"></span>工程视角</h5>
+                <ul>
+                    <li>第 10-11 章 驱动与文件系统</li>
+                    <li>第 13 章 测试体系</li>
+                    <li>第 14 章 RTOS 评估</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================= 02 总体架构 ================= -->
+    <section class="sec" id="arch">
+        <div class="sec-head"><div class="sec-no">02</div><h2>总体架构</h2></div>
+        <p class="sec-lede">LK 是严格的分层单体内核：应用与系统库站在内核核心之上，内核核心通过"体系结构层 + 平台层"两个 HAL 与硬件解耦。
+        一切组件都是<strong>模块</strong>，由 rules.mk 声明、由构建引擎装配。</p>
+
+        <figure class="fig">
+        <svg viewBox="0 0 860 435" role="img" aria-label="LK 分层架构图">
+            <defs>
+                <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--ink-2)"/></marker>
+            </defs>
+            <!-- 应用层 -->
+            <rect x="20" y="22" width="620" height="62" rx="9" fill="var(--t4)" stroke="var(--c4)" stroke-width="1.3"/>
+            <text x="40" y="48" class="lbl">应用层 <tspan class="mono t3">app/</tspan></text>
+            <text x="40" y="68" class="sm t2">shell · tests · lkboot · inetsrv · usbtest · rust_hello …（链接进镜像，开机自启动）</text>
+            <text x="625" y="48" class="sm t3" text-anchor="end">≈8.0K 行</text>
+            <!-- 系统库层 -->
+            <rect x="20" y="100" width="620" height="62" rx="9" fill="var(--t3)" stroke="var(--c3)" stroke-width="1.3"/>
+            <text x="40" y="126" class="lbl">系统库层 <tspan class="mono t3">lib/</tspan></text>
+            <text x="40" y="146" class="sm t2">libc · libcpp/lktl · fs · bio · console · heap · cbuf · pool · minip(网络) · gfx · unittest</text>
+            <text x="625" y="126" class="sm t3" text-anchor="end">≈70.9K 行 · 86 模块</text>
+            <!-- 内核核心层 -->
+            <rect x="20" y="178" width="620" height="62" rx="9" fill="var(--t1)" stroke="var(--c1)" stroke-width="1.4"/>
+            <text x="40" y="204" class="lbl">内核核心 <tspan class="mono t3">kernel/</tspan> + <tspan class="mono t3">top/</tspan></text>
+            <text x="40" y="224" class="sm t2">thread(线程/调度) · mutex/sem/event/port · timer · mp(SMP) · vm/vmm/pmm · init · debug</text>
+            <text x="625" y="204" class="sm t3" text-anchor="end">≈10.8K 行</text>
+            <!-- HAL -->
+            <rect x="20" y="256" width="302" height="86" rx="9" fill="var(--t2)" stroke="var(--c2)" stroke-width="1.3"/>
+            <text x="40" y="282" class="lbl">平台层 <tspan class="mono t3">platform/</tspan></text>
+            <text x="40" y="302" class="sm t2">SoC / 板级：early_init · 中断控制器</text>
+            <text x="40" y="318" class="sm t2">定时器 · UART · FDT 解析 · 电源</text>
+            <text x="305" y="282" class="sm t3" text-anchor="end">40 个平台</text>
+            <rect x="338" y="256" width="302" height="86" rx="9" fill="var(--t2)" stroke="var(--c2)" stroke-width="1.3"/>
+            <text x="358" y="282" class="lbl">体系结构层 <tspan class="mono t3">arch/</tspan></text>
+            <text x="358" y="302" class="sm t2">MMU 页表 · 异常/中断入口 · 上下文</text>
+            <text x="358" y="318" class="sm t2">切换 · 原子操作 · 自旋锁 · TLS</text>
+            <text x="623" y="282" class="sm t3" text-anchor="end">7 个架构族 · 30.2K 行</text>
+            <!-- 硬件 -->
+            <rect x="20" y="360" width="620" height="46" rx="9" fill="var(--tgray)" stroke="var(--line)" stroke-width="1.2"/>
+            <text x="330" y="388" class="lbl t2" text-anchor="middle">硬 件（QEMU virt · STM32 · 树莓派 · FPGA …）</text>
+            <!-- 依赖箭头 -->
+            <path class="arr" d="M330 84 v14"/><path class="arr" d="M330 162 v14"/><path class="arr" d="M330 240 v14"/>
+            <path class="arr" d="M171 342 v16"/><path class="arr" d="M489 342 v16"/>
+            <!-- 右侧注 -->
+            <text x="672" y="55" class="lbl">依赖方向</text>
+            <text x="672" y="74" class="xs t3">上层包含/调用下层</text>
+            <text x="672" y="90" class="xs t3">arch 与 platform 是</text>
+            <text x="672" y="104" class="xs t3">内核与硬件之间仅有的</text>
+            <text x="672" y="118" class="xs t3">两道隔离层</text>
+            <rect x="660" y="178" width="186" height="62" rx="9" fill="var(--t1)" stroke="var(--c1)" stroke-dasharray="4 3" stroke-width="1.1"/>
+            <text x="753" y="203" class="sm" text-anchor="middle" style="font-weight:650">监督模式运行</text>
+            <text x="753" y="222" class="xs t2" text-anchor="middle">无用户态 · 单一地址空间</text>
+        </svg>
+        <figcaption><b>图 1</b> · LK 分层架构与代码规模。内核核心本身极小（≈1.1 万行），体量主要在系统库与移植层。</figcaption>
+        </figure>
+
+        <h3>目录结构</h3>
+        <div class="tbl-wrap"><table class="tbl">
+            <tr><th>目录</th><th>角色</th><th>关键内容</th></tr>
+            <tr><td><code>top/</code></td><td>顶层模块</td><td><code>lk_main()</code> 系统初始化、lk 级公共头文件（init.h · main.h · err.h · debug.h）</td></tr>
+            <tr><td><code>kernel/</code></td><td>内核核心</td><td>thread.c · mp.c · timer.c · mutex/semaphore/event/port.c · vm/(pmm·vmm) 或 novm/</td></tr>
+            <tr><td><code>lib/</code></td><td>系统库</td><td>libc · libcpp(C++17 子集) · lktl · fs · bio · console · heap · unittest · 40+ 模块</td></tr>
+            <tr><td><code>dev/</code></td><td>设备驱动</td><td>interrupt(GIC/PLIC) · uart(pl011/8250) · bus/pci · block(ahci/ide) · virtio · net · usb</td></tr>
+            <tr><td><code>app/</code></td><td>应用程序</td><td>shell · tests · lkboot · inetsrv …（APP_START 宏注册，链接期决定）</td></tr>
+            <tr><td><code>arch/</code></td><td>CPU 体系</td><td>arm · arm64 · riscv · x86 · m68k · mips · include(公共接口)</td></tr>
+            <tr><td><code>platform/</code></td><td>SoC/板级</td><td>qemu-virt-arm · stm32f4xx · rp23xx · mps2 · pc · fvp-base …</td></tr>
+            <tr><td><code>target/</code></td><td>目标板</td><td>内存布局(MEMBASE/MEMSIZE) · 外设地址 · GPIO 配置</td></tr>
+            <tr><td><code>project/</code></td><td>构建工程</td><td>66 个 .mk，组合 target + 模块清单（*-test 系列用于 CI）</td></tr>
+            <tr><td><code>external/</code></td><td>第三方</td><td>dlmalloc · 厂商 SDK（≈162 万行，非 LK 自研）</td></tr>
+        </table></div>
+
+        <h3>模块系统：一切皆 rules.mk</h3>
+        <p>每个组件目录都有一个 <code>rules.mk</code>，声明源文件与依赖。构建引擎（<code>engine.mk</code> + <code>make/module.mk</code>）
+        递归展开依赖树，把每个模块链接为独立的 <code>&lt;module&gt;.mod.o</code>（ld -r 中间产物），最后链接成单一 <code>lk.elf</code>。</p>
+
+        <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">lib/foo/rules.mk — 模块定义解剖</span><button class="copy">复制</button></div>
+<pre class="code" data-lang="mk"><code>LOCAL_DIR := $(GET_LOCAL_DIR)
+MODULE := $(LOCAL_DIR)
+
+MODULE_SRCS += \
+    $(LOCAL_DIR)/foo.c \
+    $(LOCAL_DIR)/bar.c
+
+MODULE_DEPS += \
+    lib/libc \
+    kernel
+
+MODULE_OPTIONS := extra_warnings   # 更严格的编译告警
+
+include make/module.mk             # 收尾并清空所有 MODULE_* 变量</code></pre></div>
+
+        <ul>
+            <li><code>MODULE := $(LOCAL_DIR)</code> — 模块名即目录路径；<code>&lt;module&gt;/include/</code> 自动进入全局头文件搜索路径</li>
+            <li><code>MODULE_DEPS</code> — 硬依赖：拉入依赖模块并建立包含关系；<code>MODULE_WEAK_DEPS</code> — 仅在 <code>WITH_&lt;MODULE&gt;</code> 打开时才使用对方头文件的弱依赖</li>
+            <li><code>MODULE_OPTIONS</code> — <code>test</code>（WITH_TESTS 时启用 <code>&lt;module&gt;/test</code> 子模块）、<code>float</code>（启用 FPU 代码生成）、<code>extra_warnings</code></li>
+        </ul>
+        <div class="note info"><span class="ic">ⓘ</span><div>因为所有模块的 include 目录都进入同一个全局 <code>-I</code> 列表，<strong>漏写 MODULE_DEPS 编译器不会报错</strong>——只有链接才可能失败。
+        <code>scripts/check-module-deps.py</code> 通过解析每个模块的 #include 与构建期记录的 module_config.h 来事后核查未声明依赖，CI 以 <code>-d</code> 选项强制执行。</div></div>
+    </section>
+
+    <!-- ================= 03 构建系统 ================= -->
+    <section class="sec" id="build">
+        <div class="sec-head"><div class="sec-no">03</div><h2>构建系统</h2></div>
+        <p class="sec-lede">四层金字塔式构建体系：工程选模块、目标板定内存、平台带外设、架构出指令集。一层 .mk 包含另一层，全部收敛到构建引擎。</p>
+
+        <figure class="fig">
+        <svg viewBox="0 0 860 420" role="img" aria-label="构建系统四层结构">
+            <defs>
+                <marker id="ah2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--c2)"/></marker>
+            </defs>
+            <!-- 金字塔 -->
+            <rect x="60" y="20" width="520" height="72" rx="9" fill="var(--t1)" stroke="var(--c1)" stroke-width="1.4"/>
+            <text x="320" y="48" class="lbl" text-anchor="middle">工程层 <tspan class="mono t3">project/*.mk</tspan></text>
+            <text x="320" y="68" class="sm t2" text-anchor="middle">66 个 · 决定纳入哪些模块（例：qemu-virt-arm64-test.mk → app/shell + lib/uefi + virtual/test.mk）</text>
+            <rect x="105" y="112" width="430" height="72" rx="9" fill="var(--t3)" stroke="var(--c3)" stroke-width="1.4"/>
+            <text x="320" y="140" class="lbl" text-anchor="middle">目标板层 <tspan class="mono t3">target/*.mk</tspan></text>
+            <text x="320" y="160" class="sm t2" text-anchor="middle">51 个 · MEMBASE / MEMSIZE / KERNEL_BASE / GPIO / 外设地址</text>
+            <rect x="150" y="204" width="340" height="72" rx="9" fill="var(--t2)" stroke="var(--c2)" stroke-width="1.4"/>
+            <text x="320" y="232" class="lbl" text-anchor="middle">平台层 <tspan class="mono t3">platform/*/rules.mk</tspan></text>
+            <text x="320" y="252" class="sm t2" text-anchor="middle">40 个 SoC · platform_early_init / platform_init / halt</text>
+            <rect x="195" y="296" width="250" height="72" rx="9" fill="var(--t2)" stroke="var(--c2)" stroke-width="1.4"/>
+            <text x="320" y="324" class="lbl" text-anchor="middle">体系结构层 <tspan class="mono t3">arch/*/rules.mk</tspan></text>
+            <text x="320" y="344" class="sm t2" text-anchor="middle">7 族 · WITH_KERNEL_VM · 页大小 · 链接脚本</text>
+            <!-- 包含箭头 -->
+            <path d="M600 56 C660 56 660 148 560 148" fill="none" stroke="var(--c2)" stroke-width="1.5" marker-end="url(#ah2)"/>
+            <path d="M600 148 C660 148 660 240 530 240" fill="none" stroke="var(--c2)" stroke-width="1.5" marker-end="url(#ah2)"/>
+            <path d="M560 240 C620 240 620 332 470 332" fill="none" stroke="var(--c2)" stroke-width="1.5" marker-end="url(#ah2)"/>
+            <text x="668" y="196" class="sm t3">include 关系</text>
+            <text x="668" y="212" class="sm t3">（上层包含下层）</text>
+            <!-- 构建引擎 -->
+            <rect x="640" y="30" width="200" height="92" rx="9" fill="var(--surface)" stroke="var(--line)" stroke-width="1.2"/>
+            <text x="740" y="56" class="lbl" text-anchor="middle">构建引擎</text>
+            <text x="740" y="76" class="sm mono t2" text-anchor="middle">makefile + engine.mk</text>
+            <text x="740" y="94" class="sm mono t2" text-anchor="middle">make/module.mk</text>
+            <text x="740" y="112" class="xs t3" text-anchor="middle">递归展开 MODULE_DEPS</text>
+            <!-- 底部产物 -->
+            <rect x="60" y="386" width="780" height="0" fill="none"/>
+            <path class="arr" d="M320 368 v18"/>
+            <text x="320" y="404" class="sm mono" text-anchor="middle">build-&lt;project&gt;/ → lk.elf · lk.bin · lk.elf.map · config.h · module_config.h</text>
+        </svg>
+        <figcaption><b>图 2</b> · 四层构建体系。命令行 <code>make qemu-virt-arm64-test</code> 即按此金字塔装配出完整镜像。</figcaption>
+        </figure>
+
+        <h3>典型命令</h3>
+        <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">构建与运行</span><button class="copy">复制</button></div>
+<pre class="code" data-lang="sh"><code># 构建指定工程（生成 build-qemu-virt-arm64-test/）
+make qemu-virt-arm64-test
+
+# 覆盖堆实现 / 调试级别 / 工具链
+make qemu-virt-arm64-test LK_HEAP_IMPLEMENTATION=cmpctmalloc DEBUG=0 TOOLCHAIN=clang
+
+# 清理单个工程 / 全部
+make qemu-virt-arm64-test clean
+make spotless
+
+# CI 全量构建（安静 + 告警即错 + 未声明依赖检查）
+scripts/buildall -q -e -d
+
+# 启动 QEMU（自动构建；-6 为 64 位，-c 选 cmpctmalloc）
+scripts/do-qemuarm -6
+scripts/do-qemuriscv -6S        # riscv64 监督模式 + 分页
+
+# 运行全部单元测试（CI 同款）
+./scripts/run-qemu-boot-tests.py --arch arm64</code></pre></div>
+
+        <div class="note warn"><span class="ic">⚠</span><div><b>local.mk 陷阱</b>：根目录若存在 local.mk 会被静默包含，其中对 TOOLCHAIN / DEBUG / LK_HEAP_IMPLEMENTATION 的设置会悄悄改变
+        scripts/buildall 与测试脚本实际编译的内容——本地结果与 CI 不一致的常见原因。排查时加 <code>IGNORE_LOCAL_MK=1</code>。</div></div>
+
+        <h3>关键构建产物</h3>
+        <div class="tbl-wrap"><table class="tbl">
+            <tr><th>产物（build-&lt;project&gt;/）</th><th>说明</th></tr>
+            <tr><td><code>lk.elf / lk.bin</code></td><td>带调试信息的内核镜像 / 展平二进制</td></tr>
+            <tr><td><code>config.h</code></td><td>由 GLOBAL_DEFINES 生成的配置头，所有源文件自动包含（MEMBASE、WITH_SMP 等）</td></tr>
+            <tr><td><code>lk.elf.map / .sym / .lst</code></td><td>链接图 / 符号表 / 反汇编</td></tr>
+            <tr><td><code>&lt;module&gt;.mod.o</code></td><td>每模块一个 ld -r 中间 ELF</td></tr>
+            <tr><td><code>module_config.h</code></td><td>记录各模块依赖，供 check-module-deps.py 核查</td></tr>
+        </table></div>
+    </section>
+
+    <!-- ================= 04 启动流程 ================= -->
+    <section class="sec" id="boot">
+        <div class="sec-head"><div class="sec-no">04</div><h2>启动流程</h2></div>
+        <p class="sec-lede">从复位向量到 shell 提示符：汇编阶段建好执行环境，C 阶段沿 13 级 init 钩子阶梯逐层装配，
+        最后引导线程功成身退成为 0 号 idle 线程，调度器开始运转。</p>
+
+        <figure class="fig">
+        <svg viewBox="0 0 860 840" role="img" aria-label="arm64 启动流程">
+            <defs>
+                <marker id="ah3" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--c1)"/></marker>
+            </defs>
+            <!-- 阶段标签 -->
+            <rect x="24" y="16" width="92" height="788" rx="8" fill="var(--tgray)"/>
+            <text x="70" y="60" class="lbl" text-anchor="middle" transform="rotate(-90 70 300)" dy="0">汇编阶段（arch/arm64/start.S）</text>
+            <text x="70" y="640" class="lbl" text-anchor="middle" transform="rotate(-90 70 660)">C 阶段</text>
+
+            <g>
+            <rect x="140" y="16" width="400" height="66" rx="9" fill="var(--t2)" stroke="var(--c2)" stroke-width="1.3"/>
+            <text x="160" y="42" class="lbl">arm64_reset <tspan class="mono t3">start.S:50</tspan></text>
+            <text x="160" y="62" class="sm t2">EL2/EL3→EL1 · 保存启动参数 · 按 mmu_initial_mappings 建内核页表</text>
+
+            <rect x="140" y="102" width="400" height="50" rx="9" fill="var(--t2)" stroke="var(--c2)" stroke-width="1.3"/>
+            <text x="160" y="124" class="sm">arm64_enable_mmu <tspan class="t2">· trampoline 处理开 MMU 的物理→虚拟跳转</tspan></text>
+            <text x="160" y="142" class="sm t2">设 SP=栈顶 · 清 BSS · 初始化 per-CPU(x18) · 跳入 C</text>
+
+            <rect x="140" y="172" width="400" height="58" rx="9" fill="var(--t1)" stroke="var(--c1)" stroke-width="1.4"/>
+            <text x="160" y="198" class="lbl">lk_main <tspan class="mono t3">top/main.c:49</tspan></text>
+            <text x="160" y="218" class="sm t2">kernel_init_early() → thread_init_early()：借引导栈造出 bootstrap 线程上下文</text>
+
+            <rect x="140" y="250" width="400" height="66" rx="9" fill="var(--t1)" stroke="var(--c1)" stroke-width="1.3"/>
+            <text x="160" y="276" class="lbl">三级 early_init</text>
+            <text x="160" y="296" class="sm t2">arch_early_init（VBAR/异常表）· platform_early_init（调试 UART·</text>
+            <text x="160" y="312" class="sm t2">定时器·FDT 解析内存与命令行）· target_early_init（板级 GPIO）</text>
+
+            <rect x="140" y="334" width="400" height="50" rx="9" fill="var(--t3)" stroke="var(--c3)" stroke-width="1.3"/>
+            <text x="160" y="356" class="lbl">heap_init <tspan class="sm t2">+ call_constructors()（全局 C++ 构造）</tspan></text>
+            <text x="160" y="374" class="sm t2">此后 malloc 可用；VM 子系统标记内核镜像与 boot 分配器占用的页</text>
+
+            <rect x="140" y="400" width="400" height="58" rx="9" fill="var(--t1)" stroke="var(--c1)" stroke-width="1.3"/>
+            <text x="160" y="426" class="lbl">kernel_init</text>
+            <text x="160" y="446" class="sm t2">mp_init · thread_init · timer_init · port_init —— 调度所需的</text>
+            <text x="160" y="462" class="sm t2">全部基础设施就位</text>
+
+            <rect x="140" y="474" width="400" height="66" rx="9" fill="var(--t1)" stroke="var(--c1)" stroke-width="1.5"/>
+            <text x="160" y="500" class="lbl">交接点：bootstrap2 线程</text>
+            <text x="160" y="520" class="sm t2">创建固定在 cpu0 的 bootstrap2 并 resume；引导线程随即</text>
+            <text x="160" y="536" class="sm t2">thread_become_idle() —— 化身 0 号 CPU 的 idle 线程，调度器开跑</text>
+
+            <rect x="140" y="558" width="400" height="50" rx="9" fill="var(--t1)" stroke="var(--c1)" stroke-width="1.3"/>
+            <text x="160" y="580" class="lbl">arch_init</text>
+            <text x="160" y="598" class="sm t2">打印启动 EL 与 ASID 信息；SMP 时注册 IPI 处理函数</text>
+
+            <rect x="140" y="624" width="400" height="66" rx="9" fill="var(--t1)" stroke="var(--c1)" stroke-width="1.3"/>
+            <text x="160" y="650" class="lbl">platform_init</text>
+            <text x="160" y="670" class="sm t2">fdtwalk_setup_cpus_arm 逐个 PSCI_CPU_ON 唤醒副核 · 完整控制台</text>
+            <text x="160" y="686" class="sm t2">· GIC · PCI 枚举 · virtio 设备探测</text>
+
+            <rect x="140" y="706" width="400" height="50" rx="9" fill="var(--t4)" stroke="var(--c4)" stroke-width="1.3"/>
+            <text x="160" y="728" class="lbl">target_init → apps_init</text>
+            <text x="160" y="746" class="sm t2">遍历 "apps" 链接段：先调 app-&gt;init，再为每个自启动 app 建线程</text>
+
+            <rect x="140" y="774" width="400" height="50" rx="9" fill="var(--t4)" stroke="var(--c4)" stroke-width="1.5"/>
+            <text x="160" y="796" class="lbl">shell 上线</text>
+            <text x="160" y="814" class="sm t2">console_start → 提示符出现（可先执行 lk.autorun= 脚本）</text>
+            </g>
+            <!-- 主干箭头 -->
+            <path class="arrc1" d="M340 82 v18"/><path class="arrc1" d="M340 152 v18"/><path class="arrc1" d="M340 230 v18"/>
+            <path class="arrc1" d="M340 316 v16"/><path class="arrc1" d="M340 384 v14"/><path class="arrc1" d="M340 458 v14"/>
+            <path class="arrc1" d="M340 540 v16"/><path class="arrc1" d="M340 608 v14"/><path class="arrc1" d="M340 690 v14"/>
+            <path class="arrc1" d="M340 756 v16"/>
+
+            <!-- 右侧 init level 阶梯 -->
+            <text x="586" y="40" class="lbl">LK_INIT_LEVEL 钩子阶梯</text>
+            <text x="586" y="58" class="xs t3">LK_INIT_HOOK 把函数放入 "lk_init" 链接段，</text>
+            <text x="586" y="72" class="xs t3">lk_main/bootstrap2 在对应节点间逐级调用</text>
+            <rect x="580" y="86" width="258" height="700" rx="9" fill="var(--surface)" stroke="var(--grid)"/>
+            <text x="598" y="114" class="sm mono">0x1000 ARCH_EARLY</text><text x="822" y="114" class="xs t3" text-anchor="end">CPU/缓存基础</text>
+            <text x="598" y="142" class="sm mono">0x2000 PLATFORM_EARLY</text><text x="822" y="142" class="xs t3" text-anchor="end">SoC 时钟/电源</text>
+            <text x="598" y="170" class="sm mono">0x3000 TARGET_EARLY</text><text x="822" y="170" class="xs t3" text-anchor="end">板级 GPIO</text>
+            <text x="598" y="198" class="sm mono" style="fill:var(--c3);font-weight:700">0x4000 HEAP</text><text x="822" y="198" class="xs t3" text-anchor="end">malloc 可用</text>
+            <text x="598" y="226" class="sm mono" style="fill:var(--c3);font-weight:700">0x5000 VM</text><text x="822" y="226" class="xs t3" text-anchor="end">分页就绪</text>
+            <text x="598" y="254" class="sm mono" style="fill:var(--c1);font-weight:700">0x6000 KERNEL</text><text x="822" y="254" class="xs t3" text-anchor="end">同步原语/IRQ</text>
+            <text x="598" y="282" class="sm mono" style="fill:var(--c1);font-weight:700">0x7000 THREADING</text><text x="822" y="282" class="xs t3" text-anchor="end">调度器可用</text>
+            <text x="598" y="310" class="sm mono">0x8000 ARCH</text><text x="822" y="310" class="xs t3" text-anchor="end">完整 CPU/SMP</text>
+            <text x="598" y="338" class="sm mono">0x9000 PLATFORM</text><text x="822" y="338" class="xs t3" text-anchor="end">驱动注册</text>
+            <text x="598" y="366" class="sm mono">0xa000 TARGET</text><text x="822" y="366" class="xs t3" text-anchor="end">板级驱动</text>
+            <text x="598" y="394" class="sm mono" style="fill:var(--c4);font-weight:700">0xb000 APPS</text><text x="822" y="394" class="xs t3" text-anchor="end">应用启动</text>
+            <text x="598" y="426" class="xs t2">每个钩子可标记：</text>
+            <text x="598" y="442" class="xs t2">PRIMARY_CPU / SECONDARY_CPUS</text>
+            <text x="598" y="458" class="xs t2">/ ALL_CPUS，副核只跑</text>
+            <text x="598" y="474" class="xs t2">属于自己的那部分。</text>
+            <text x="598" y="502" class="xs t2">典型钩子：console 在</text>
+            <text x="598" y="518" class="xs t2">PLATFORM_EARLY-1，mutex</text>
+            <text x="598" y="534" class="xs t2">就绪检查在 THREADING，</text>
+            <text x="598" y="550" class="xs t2">GIC 在 VM，gfxconsole 在</text>
+            <text x="598" y="566" class="xs t2">PLATFORM。</text>
+            <text x="598" y="598" class="xs t2">机制：struct lk_init_struct</text>
+            <text x="598" y="614" class="xs t2">入 "lk_init" 段，lk_init_</text>
+            <text x="598" y="630" class="xs t2">level() 反复扫描取最小未</text>
+            <text x="598" y="646" class="xs t2">调用者执行（top/init.c:31）</text>
+            <path class="arr dash" d="M580 200 C540 200 544 356 542 358"/>
+            <path class="arr dash" d="M580 284 C550 284 548 414 544 420"/>
+            <path class="arr dash" d="M580 394 C548 394 546 730 544 732"/>
+        </svg>
+        <figcaption><b>图 3</b> · arm64/qemu-virt 启动主流程（左）与 init 钩子阶梯（右）。虚线表示左侧调用点与右侧层级的对应关系。</figcaption>
+        </figure>
+
+        <h3>副核（SMP）如何上线</h3>
+        <p>主核在 <code>platform_init</code> 中解析设备树 /cpus 节点（<code>lib/fdtwalk/helpers.cpp:213</code>），为每个副核预先创建
+        <strong>半构造状态的 idle 线程</strong>和一个固定在其上的 secondarybootstrap2 线程，然后逐个调用 <code>psci_cpu_on(mpidr, 入口, cpu)</code>。
+        入口地址是镜像基址 +4 —— <code>start.S</code> 特意把第二个字安排成跳向 <code>arm64_secondary_phys_entry</code> 的分支：</p>
+        <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">arch/arm64/start.S — 镜像头部的副核入口</span><button class="copy">复制</button></div>
+<pre class="code"><code>/* 镜像第二字：副核从此进入（PSCI 以 MEMBASE+4 唤醒它们） */
+    b   arm64_secondary_phys_entry
+arm64_reset:
+    /* 主核：保存 EL、降级到 EL1、建页表、开 MMU、清 BSS、bl lk_main */</code></pre></div>
+        <p>副核醒来后走与主核对称的路径：装好自己的 per-CPU 指针（x18）与异常向量，跑 <code>SECONDARY_CPUS</code> 标记的
+        THREADING 之前钩子，注册自己的 IPI 处理函数，最后 resume 属于自己的 secondarybootstrap2 并进入调度器。
+        此后每个 CPU 都有独立 idle 线程与定时器队列，靠 SGI 中断互相唤起。</p>
+
+        <div class="note info"><span class="ic">ⓘ</span><div><b>为什么"引导线程变 idle"是优雅的交接</b>：LK 没有"启动后再启动调度器"的二次切换——
+        <code>thread_become_idle()</code>（kernel/thread.c:858）直接把当前执行流登记为 idle 线程，调度器从这一刻起自然接管所有 CPU，
+        避免了专门的引导状态与切换窗口。</div></div>
+    </section>
+
+    <!-- ================= 05 线程与调度 ================= -->
+    <section class="sec" id="thread">
+        <div class="sec-head"><div class="sec-no">05</div><h2>线程与调度</h2></div>
+        <p class="sec-lede">LK 的心脏是 kernel/thread.c（约 1300 行）：完整的抢占式多线程——32 级固定优先级、位图 O(1) 选线程、
+        同优先级时间片轮转、实时线程豁免、SMP 亲和与跨核唤醒。这是它"内核"身份的核心凭证。</p>
+
+        <figure class="fig">
+        <svg viewBox="0 0 860 415" role="img" aria-label="线程状态机">
+            <defs>
+                <marker id="ah4" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--ink-2)"/></marker>
+                <marker id="ah4b" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--c1)"/></marker>
+            </defs>
+            <!-- 状态节点 -->
+            <rect x="70" y="40" width="150" height="46" rx="9" fill="var(--tgray)" stroke="var(--line)" stroke-width="1.3"/>
+            <text x="145" y="60" class="lbl" text-anchor="middle">SUSPENDED</text>
+            <text x="145" y="76" class="xs t3" text-anchor="middle">创建后尚未启动</text>
+
+            <rect x="70" y="192" width="150" height="46" rx="9" fill="var(--t1)" stroke="var(--c1)" stroke-width="1.6"/>
+            <text x="145" y="212" class="lbl" text-anchor="middle">READY</text>
+            <text x="145" y="228" class="xs t3" text-anchor="middle">在运行队列中等待</text>
+
+            <rect x="340" y="192" width="160" height="46" rx="9" fill="var(--c1)" stroke="var(--c1)" stroke-width="1.6"/>
+            <text x="420" y="212" class="lbl" text-anchor="middle" style="fill:#fff">RUNNING</text>
+            <text x="420" y="228" class="xs" text-anchor="middle" style="fill:rgba(255,255,255,0.85)">正在 CPU 上执行</text>
+
+            <rect x="620" y="80" width="160" height="46" rx="9" fill="var(--t8)" stroke="var(--c8)" stroke-width="1.4"/>
+            <text x="700" y="100" class="lbl" text-anchor="middle">BLOCKED</text>
+            <text x="700" y="116" class="xs t3" text-anchor="middle">等 mutex / 信号量 / 事件 / 端口</text>
+
+            <rect x="620" y="280" width="160" height="46" rx="9" fill="var(--t4)" stroke="var(--c4)" stroke-width="1.4"/>
+            <text x="700" y="300" class="lbl" text-anchor="middle">SLEEPING</text>
+            <text x="700" y="316" class="xs t3" text-anchor="middle">thread_sleep 定时睡眠</text>
+
+            <rect x="340" y="336" width="160" height="46" rx="9" fill="var(--tgray)" stroke="var(--line)" stroke-width="1.3"/>
+            <text x="420" y="356" class="lbl" text-anchor="middle">DEATH</text>
+            <text x="420" y="372" class="xs t3" text-anchor="middle">join 回收 / detached 延迟释放</text>
+
+            <!-- 迁移边 -->
+            <path class="arr" d="M145 86 v106"/>
+            <text x="152" y="146" class="xs t2">thread_resume()</text>
+
+            <path class="arrc1" d="M220 215 H340"/>
+            <text x="280" y="207" class="xs" text-anchor="middle" style="fill:var(--c1);font-weight:650">get_top_thread 选中</text>
+
+            <path class="arr" d="M420 238 C 420 292, 220 292, 220 240" fill="none"/>
+            <text x="320" y="288" class="xs t2" text-anchor="middle">时间片耗尽 / thread_yield() / 被更高优先级抢占</text>
+
+            <path class="arr" d="M500 194 L 620 128"/>
+            <text x="575" y="146" class="xs t2" text-anchor="middle">wait_queue_block()</text>
+
+            <path class="arr" d="M620 96 C 480 44, 205 78, 150 188" fill="none"/>
+            <text x="380" y="52" class="xs" text-anchor="middle" style="fill:var(--c8);font-weight:600">wait_queue_wake_one/all() · 唤醒重进 READY</text>
+
+            <path class="arr" d="M500 236 L 620 296"/>
+            <text x="573" y="284" class="xs t2" text-anchor="middle">thread_sleep(ms)</text>
+
+            <path class="arr" d="M620 316 C 470 372, 235 350, 163 240" fill="none"/>
+            <text x="380" y="356" class="xs t2" text-anchor="middle">定时器到期 thread_sleep_handler()</text>
+
+            <path class="arr" d="M420 238 V336"/>
+            <text x="428" y="296" class="xs t2">thread_exit(retcode)</text>
+        </svg>
+        <figcaption><b>图 4</b> · 线程六状态机（kernel/include/kernel/thread.h）。阻塞态统一由 wait queue 机制承载。</figcaption>
+        </figure>
+
+        <h3>优先级与调度算法</h3>
+        <p>调度器维护 <strong>32 个按优先级索引的就绪链表</strong>加一个 32 位位图 <code>run_queue_bitmap</code>——某位为 1 表示对应链表非空。
+        选线程时用一条 <code>__builtin_clz</code> 找到最高非空优先级，再从该链表摘头，严格 O(1)：</p>
+
+        <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">kernel/thread.c:436 — O(1) 选线程</span><button class="copy">复制</button></div>
+<pre class="code"><code>static thread_t *get_top_thread(int cpu) {
+    thread_t *newthread;
+    uint32_t local_run_queue_bitmap = run_queue_bitmap;
+
+    while (local_run_queue_bitmap) {
+        /* 一条 CLZ 指令定位最高非空优先级 */
+        uint next_queue = sizeof(run_queue_bitmap) * 8 - 1
+                          - __builtin_clz(local_run_queue_bitmap);
+
+        list_for_every_entry(&amp;run_queue[next_queue], newthread, thread_t, queue_node) {
+            if (newthread-&gt;pinned_cpu &lt; 0 || newthread-&gt;pinned_cpu == cpu) {
+                list_delete(&amp;newthread-&gt;queue_node);
+                if (list_is_empty(&amp;run_queue[next_queue]))
+                    run_queue_bitmap &amp;= ~(1 &lt;&lt; next_queue);
+                return newthread;   /* 亲和检查通过即返回 */
+            }
+        }
+        local_run_queue_bitmap &amp;= ~(1 &lt;&lt; next_queue);
+    }
+    return idle_thread(cpu);        /* 无事可做 → 本 CPU 的 idle 线程 */
+}</code></pre></div>
+
+        <figure class="fig">
+        <svg viewBox="0 0 860 330" role="img" aria-label="运行队列与位图">
+            <defs>
+                <marker id="ah5" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--c1)"/></marker>
+            </defs>
+            <!-- 位图 -->
+            <text x="60" y="34" class="lbl">run_queue_bitmap（32 位，位序 = 优先级）</text>
+            <g>
+                <!-- 32 格：31 在左 -->
+                <!-- 高亮 31,24,16,8 -->
+                <rect x="60"  y="46" width="20" height="24" rx="3" fill="var(--c1)"/><text x="70"  y="62" class="xs" text-anchor="middle" style="fill:#fff">1</text>
+                <rect x="82"  y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="92"  y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="104" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="114" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="126" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="136" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="148" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="158" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="170" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="180" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="192" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="202" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="214" y="46" width="20" height="24" rx="3" fill="var(--c1)"/><text x="224" y="62" class="xs" text-anchor="middle" style="fill:#fff">1</text>
+                <rect x="236" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="246" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="258" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="268" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="280" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="290" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="302" y="46" width="20" height="24" rx="3" fill="var(--c1)"/><text x="312" y="62" class="xs" text-anchor="middle" style="fill:#fff">1</text>
+                <rect x="324" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="334" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="346" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="356" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="368" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="378" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="390" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="400" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="412" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="422" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="434" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="444" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="456" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="466" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="478" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="488" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="500" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="510" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="522" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="532" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="544" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="554" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="566" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="576" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="588" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="598" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="610" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="620" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="632" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="642" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="654" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="664" y="62" class="xs t3" text-anchor="middle">0</text>
+                <rect x="676" y="46" width="20" height="24" rx="3" fill="var(--c1)"/><text x="686" y="62" class="xs" text-anchor="middle" style="fill:#fff">1</text>
+                <rect x="698" y="46" width="20" height="24" rx="3" fill="var(--surface)" stroke="var(--line)"/><text x="708" y="62" class="xs t3" text-anchor="middle">0</text>
+            </g>
+            <text x="60"  y="88" class="xs mono t3">p31</text>
+            <text x="214" y="88" class="xs mono t3">p24</text>
+            <text x="302" y="88" class="xs mono t3">p16</text>
+            <text x="676" y="88" class="xs mono t3">p8</text>
+            <path class="arrc1" d="M70 70 C 70 108, 120 112, 150 118"/>
+            <text x="800" y="34" class="xs t2" text-anchor="end">CLZ → 最高非空位 → p31 胜出</text>
+
+            <!-- 就绪链表 -->
+            <g>
+                <text x="60" y="140" class="sm mono" style="fill:var(--c1)">p31</text>
+                <rect x="100" y="124" width="130" height="30" rx="6" fill="var(--t1)" stroke="var(--c1)"/><text x="165" y="144" class="xs" text-anchor="middle">DPC 线程</text>
+
+                <text x="60" y="186" class="sm mono" style="fill:var(--c1)">p24</text>
+                <rect x="100" y="170" width="60" height="30" rx="6" fill="var(--t1)" stroke="var(--c1)"/><text x="130" y="190" class="xs" text-anchor="middle">A</text>
+                <path class="arrc1" d="M160 185 h22"/>
+                <rect x="184" y="170" width="60" height="30" rx="6" fill="var(--t1)" stroke="var(--c1)"/><text x="214" y="190" class="xs" text-anchor="middle">B</text>
+
+                <text x="60" y="232" class="sm mono" style="fill:var(--c1)">p16</text>
+                <rect x="100" y="216" width="60" height="30" rx="6" fill="var(--t1)" stroke="var(--c1)"/><text x="130" y="236" class="xs" text-anchor="middle">C</text>
+                <path class="arrc1" d="M160 231 h22"/>
+                <rect x="184" y="216" width="60" height="30" rx="6" fill="var(--t1)" stroke="var(--c1)"/><text x="214" y="236" class="xs" text-anchor="middle">D</text>
+                <path class="arrc1" d="M244 231 h22"/>
+                <rect x="268" y="216" width="60" height="30" rx="6" fill="var(--t1)" stroke="var(--c1)"/><text x="298" y="236" class="xs" text-anchor="middle">E</text>
+                <text x="342" y="236" class="xs t3">← 同优先级 FIFO，quantum = 5 tick</text>
+
+                <text x="60" y="278" class="sm mono" style="fill:var(--c1)">p8</text>
+                <rect x="100" y="262" width="60" height="30" rx="6" fill="var(--t1)" stroke="var(--c1)"/><text x="130" y="282" class="xs" text-anchor="middle">F</text>
+
+                <text x="60" y="318" class="sm mono t3">p0</text>
+                <rect x="100" y="302" width="180" height="26" rx="6" fill="var(--tgray)" stroke="var(--line)"/><text x="190" y="320" class="xs t2" text-anchor="middle">idle 线程（每 CPU 一个）</text>
+            </g>
+            <!-- 右侧要点 -->
+            <rect x="520" y="120" width="300" height="196" rx="10" fill="var(--surface)" stroke="var(--grid)"/>
+            <text x="542" y="148" class="lbl">规则要点</text>
+            <text x="542" y="172" class="xs t2">· 高优先级就绪 → 立即抢占低优先级</text>
+            <text x="542" y="194" class="xs t2">· 时间片用尽 → 队尾；被抢占有余额 → 队首</text>
+            <text x="542" y="216" class="xs t2">· 实时线程(REAL_TIME 标志 + 优先级&gt;16)</text>
+            <text x="542" y="234" class="xs t2">   免时间片，直到阻塞或被更高者抢占</text>
+            <text x="542" y="256" class="xs t2">· 队列为<strong style="font-weight:650">全局共享</strong>，非 per-CPU；</text>
+            <text x="542" y="274" class="xs t2">   选择时跳过钉在其他核的线程</text>
+            <text x="542" y="296" class="xs t2">· quantum=5 为硬编码（源码留有</text>
+            <text x="542" y="314" class="xs t2">   "XXX make this smarter" 注释）</text>
+        </svg>
+        <figcaption><b>图 5</b> · 位图 + 32 级就绪链表。本例中 p31 的 DPC 线程将被选中；没有可运行线程时落到本 CPU 的 idle。</figcaption>
+        </figure>
+
+        <div class="tbl-wrap"><table class="tbl">
+            <tr><th class="num">级别</th><th>宏</th><th>典型用途</th></tr>
+            <tr><td class="num">31</td><td><code>HIGHEST_PRIORITY</code></td><td>最高优先级，不可长时间阻塞</td></tr>
+            <tr><td class="num">30</td><td><code>DPC_PRIORITY</code></td><td>延迟过程调用（lib/dpc）</td></tr>
+            <tr><td class="num">24</td><td><code>HIGH_PRIORITY</code></td><td>高优先级任务</td></tr>
+            <tr class="rowhero"><td class="num">16</td><td><code>DEFAULT_PRIORITY</code></td><td>默认线程优先级（实时判定阈值）</td></tr>
+            <tr><td class="num">8</td><td><code>LOW_PRIORITY</code></td><td>低优先级后台任务</td></tr>
+            <tr><td class="num">0</td><td><code>IDLE_PRIORITY</code></td><td>idle 线程专属</td></tr>
+        </table></div>
+
+        <h3>线程 API 一览</h3>
+        <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">线程生命周期 — kernel/include/kernel/thread.h</span><button class="copy">复制</button></div>
+<pre class="code"><code>/* 创建（挂起态）并启动 */
+thread_t *t = thread_create("worker", worker_entry, arg,
+                            DEFAULT_PRIORITY, DEFAULT_STACK_SIZE);
+thread_detach_and_resume(t);            /* detach + resume 一步完成 */
+
+/* 等待结束（带超时），取返回码 */
+int retcode;
+thread_join(t, &amp;retcode, INFINITE_TIME);
+
+/* 睡眠 / 让出 / 动态调优先级 / 标记实时 */
+thread_sleep(100);                      /* ms */
+thread_yield();
+thread_set_priority(HIGH_PRIORITY);
+thread_set_real_time(get_current_thread());   /* 取消其抢占定时器 */
+
+/* 自带线程结构或栈的变体（静态分配场景） */
+thread_create_etc(&amp;my_thread, "name", entry, arg, prio, my_stack, stack_size);</code></pre></div>
+
+        <ul>
+            <li><strong>线程结构</strong>：名字、状态、优先级与剩余配额、栈与边界检查标志、等待队列回指、体系结构保存的寄存器现场、TLS 槽（errno 恒占其一，其余按编译开关）、调试统计（调度次数/运行时长）</li>
+            <li><strong>栈保护</strong>：DEBUG 构建下做栈边界检查与高水位跟踪；线程退出时栈经 <code>heap_delayed_free()</code> 延迟释放，避免释放仍在被切换路径使用的内存</li>
+            <li><strong>SMP 亲和</strong>：<code>pinned_cpu</code> 可把线程钉在某核（副核引导线程即钉死）；唤醒时 <code>wakeup_cpu_for_thread()</code> 对未钉住线程向所有其他核发调度 IPI，对钉住线程只发目标核</li>
+            <li><strong>负载感知</strong>：每次调度都更新 <code>mp</code> 中的 idle/realtime CPU 掩码；<code>mp_reschedule()</code> 默认不打扰正在跑实时线程的核（除非调用者声明 MP_RESCHEDULE_FLAG_REALTIME）</li>
+        </ul>
+
+        <div class="note info"><span class="ic">ⓘ</span><div><b>一个"非典型"细节</b>：就绪队列是<strong>全局一份</strong>而非每 CPU 一份，靠一把 <code>thread_lock</code>（关中断自旋锁）保护。
+        这让 SMP 语义极简单（任何核都能取任何线程，只受亲和约束），代价是多核竞争一把锁——对目标场景（1–4 核固件环境）是正确的取舍，也是评估其实时抖动时需要记住的一点。</div></div>
+    </section>
+
+    <!-- ================= 06 同步原语 ================= -->
+    <section class="sec" id="sync">
+        <div class="sec-head"><div class="sec-no">06</div><h2>同步原语</h2></div>
+        <p class="sec-lede">所有睡眠式同步都构建在同一块基石上：wait queue（等待队列）。mutex、semaphore、event、port、thread_join
+        各自封装出不同语义，自旋锁则服务于中断/多核临界区。</p>
+
+        <figure class="fig">
+        <svg viewBox="0 0 860 330" role="img" aria-label="等待队列机制">
+            <defs>
+                <marker id="ah6" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--ink-2)"/></marker>
+            </defs>
+            <!-- 左：原语 -->
+            <text x="30" y="34" class="lbl">上层原语（各自内嵌一个 wait_queue_t）</text>
+            <g>
+            <rect x="30"  y="50"  width="150" height="38" rx="8" fill="var(--t1)" stroke="var(--c1)"/><text x="105" y="74"  class="sm" text-anchor="middle">mutex（count + holder）</text>
+            <rect x="30"  y="98"  width="150" height="38" rx="8" fill="var(--t1)" stroke="var(--c1)"/><text x="105" y="122" class="sm" text-anchor="middle">semaphore（count）</text>
+            <rect x="30"  y="146" width="150" height="38" rx="8" fill="var(--t1)" stroke="var(--c1)"/><text x="105" y="170" class="sm" text-anchor="middle">event（signalled 标志）</text>
+            <rect x="30"  y="194" width="150" height="38" rx="8" fill="var(--t1)" stroke="var(--c1)"/><text x="105" y="218" class="sm" text-anchor="middle">port（读写端口）</text>
+            <rect x="30"  y="242" width="150" height="38" rx="8" fill="var(--t1)" stroke="var(--c1)"/><text x="105" y="266" class="sm" text-anchor="middle">thread_join（retcode 队列）</text>
+            </g>
+            <path class="arr" d="M180 190 H300"/>
+
+            <!-- 中：wait queue -->
+            <rect x="300" y="128" width="290" height="94" rx="10" fill="var(--surface)" stroke="var(--c1)" stroke-width="1.5"/>
+            <text x="445" y="152" class="lbl" text-anchor="middle">wait_queue_t（FIFO 双向链）</text>
+            <rect x="325" y="166" width="70" height="34" rx="6" fill="var(--t1)" stroke="var(--c1)"/><text x="360" y="187" class="sm mono" text-anchor="middle">T3</text>
+            <path class="arr" d="M395 183 h20"/>
+            <rect x="417" y="166" width="70" height="34" rx="6" fill="var(--t1)" stroke="var(--c1)"/><text x="452" y="187" class="sm mono" text-anchor="middle">T1</text>
+            <path class="arr" d="M487 183 h20"/>
+            <rect x="509" y="166" width="60" height="34" rx="6" fill="var(--t1)" stroke="var(--c1)"/><text x="539" y="187" class="sm mono" text-anchor="middle">T5</text>
+            <text x="325" y="216" class="xs t3">队尾进 · 队头出（与优先级无关）</text>
+
+            <!-- 上：block 流程 -->
+            <rect x="300" y="30" width="290" height="66" rx="10" fill="var(--tgray)" stroke="var(--line)"/>
+            <text x="320" y="54" class="sm" style="font-weight:650">wait_queue_block(wait, timeout)</text>
+            <text x="320" y="74" class="xs t2">THREAD_LOCK（关中断）→ 当前线程置 BLOCKED 入队尾</text>
+            <text x="320" y="90" class="xs t2">→ thread_resched 走人；超时由定时器回调拉回</text>
+            <path class="arr" d="M445 96 v30"/>
+
+            <!-- 右：wake -->
+            <rect x="630" y="128" width="200" height="94" rx="10" fill="var(--tgray)" stroke="var(--line)"/>
+            <text x="650" y="152" class="sm" style="font-weight:650">wake_one / wake_all</text>
+            <text x="650" y="172" class="xs t2">摘队头（或全部从队尾弹出）→</text>
+            <text x="650" y="188" class="xs t2">置 READY 入运行队列队首，</text>
+            <text x="650" y="204" class="xs t2">resched=true 时立即切走；</text>
+            <text x="650" y="220" class="xs t2">返回值即 block 的返回值</text>
+            <path class="arr" d="M590 175 h38"/>
+
+            <!-- 底部警示 -->
+            <rect x="300" y="242" width="530" height="38" rx="8" fill="var(--t8)" stroke="var(--c8)" stroke-dasharray="4 3"/>
+            <text x="565" y="266" class="sm" text-anchor="middle">⚠ FIFO 唤醒 + 无优先级继承 —— 高优先级线程可能排在低优先级之后（详见第 14 章 RTOS 评估）</text>
+        </svg>
+        <figcaption><b>图 6</b> · wait queue 是一切睡眠式同步的底座。注意它按到达顺序而非优先级组织。</figcaption>
+        </figure>
+
+        <h3>各原语语义</h3>
+        <div class="tbl-wrap"><table class="tbl">
+            <tr><th>原语</th><th>核心状态</th><th>语义要点</th><th>来源</th></tr>
+            <tr><td><code>mutex</code></td><td>count + holder</td><td>递归获取即 panic；持有时可睡眠；release 唤醒一个等待者并立即重调度</td><td><code>kernel/mutex.c</code></td></tr>
+            <tr><td><code>semaphore</code></td><td>count</td><td>计数信号量，计满（SEM_MAX）再 post 返回 ERR_OUT_OF_RANGE</td><td><code>kernel/semaphore.c</code></td></tr>
+            <tr><td><code>event</code></td><td>signalled + magic</td><td>三种模式：单向通知 / 双向自动清除 / 双向手动清除；可超时等待</td><td><code>kernel/event.c</code></td></tr>
+            <tr><td><code>port</code></td><td>包环形缓冲 + 端口表</td><td>内核内消息队列：命名端口、单播/广播/大缓冲三模式、端口组多路等待</td><td><code>kernel/port.c</code></td></tr>
+            <tr><td><code>spinlock</code></td><td>一个字</td><td>arm64 用 ldaxr/stxr 实现；UP 退化为关中断占位；带 irqsave 变体与 C++ RAII 包装</td><td><code>arch/*/spinlock*</code></td></tr>
+            <tr><td><code>wait_queue</code></td><td>链表</td><td>底层原语：block/wake_one/wake_all/destroy（destroy 可把等待者全部拉起并返回 ERR_OBJECT_DESTROYED）</td><td><code>kernel/thread.c:1079</code>+</td></tr>
+        </table></div>
+
+        <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">kernel/mutex.c:77 — 获取与释放的核心路径</span><button class="copy">复制</button></div>
+<pre class="code"><code>status_t mutex_acquire_timeout(mutex_t *m, lk_time_t timeout) {
+    ...
+    THREAD_LOCK(state);
+    if (unlikely(++m-&gt;count &gt; 1)) {         /* 已被持有 → 睡眠等待 */
+        ret = wait_queue_block(&amp;m-&gt;wait, timeout);
+        if (ret == ERR_TIMED_OUT)
+            m-&gt;count--;                     /* 超时回滚计数 */
+    }
+    m-&gt;holder = get_current_thread();
+    THREAD_UNLOCK(state);
+    return ret;
+}
+
+status_t mutex_release(mutex_t *m) {
+    ...
+    THREAD_LOCK(state);
+    m-&gt;holder = 0;
+    if (unlikely(--m-&gt;count &gt;= 1))         /* 还有等待者 → 唤醒一个 */
+        wait_queue_wake_one(&amp;m-&gt;wait, true, NO_ERROR);
+    THREAD_UNLOCK(state);
+    return NO_ERROR;
+}</code></pre></div>
+
+        <h3>port：内核内的消息通道</h3>
+        <p>port 是 LK 特色的 IPC 原语：写端与读端分离、按名字全局登记（<code>write_port_list</code>）、读写两端可独立销毁。
+        每个端口内是一个 2 指针宽包的环形缓冲——普通模式 8 包、<code>PORT_MODE_BIG_BUFFER</code> 64 包；
+        无读者时写入缓存在写端自己的缓冲里，待首个读者打开时"偷"走整个缓冲。</p>
+
+        <figure class="fig">
+        <svg viewBox="0 0 860 300" role="img" aria-label="port 数据模型">
+            <defs>
+                <marker id="ah7" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--c7)"/></marker>
+            </defs>
+            <!-- 写端 -->
+            <rect x="30" y="60" width="180" height="64" rx="10" fill="var(--t7)" stroke="var(--c7)" stroke-width="1.4"/>
+            <text x="120" y="86" class="lbl" text-anchor="middle">port_write()</text>
+            <text x="120" y="106" class="xs t2" text-anchor="middle">按名字写入一个包（2 指针宽）</text>
+            <!-- write_port -->
+            <rect x="270" y="40" width="250" height="110" rx="10" fill="var(--surface)" stroke="var(--c7)" stroke-width="1.5"/>
+            <text x="395" y="64" class="lbl" text-anchor="middle">write_port_t</text>
+            <rect x="292" y="76" width="206" height="40" rx="6" fill="var(--t7)" stroke="var(--c7)"/>
+            <text x="395" y="94" class="xs t2" text-anchor="middle">环形缓冲 8 包 / 64 包（pow2 索引 head/tail）</text>
+            <text x="395" y="110" class="xs t3" text-anchor="middle">无读者期间在此缓存写入</text>
+            <text x="395" y="138" class="xs t3" text-anchor="middle">挂入全局 write_port_list · magic W=开 X=关</text>
+            <path d="M210 92 h56" stroke="var(--c7)" stroke-width="1.6" fill="none" marker-end="url(#ah7)"/>
+            <!-- 读端们 -->
+            <rect x="580" y="30" width="250" height="58" rx="10" fill="var(--t7)" stroke="var(--c7)"/>
+            <text x="705" y="52" class="sm" text-anchor="middle" style="font-weight:650">read_port_t · 读者 A（unicast 仅此一个）</text>
+            <text x="705" y="72" class="xs t3" text-anchor="middle">自己的环形缓冲 + 私有 wait queue</text>
+            <rect x="580" y="100" width="250" height="58" rx="10" fill="var(--t7)" stroke="var(--c7)"/>
+            <text x="705" y="122" class="sm" text-anchor="middle" style="font-weight:650">read_port_t · 读者 B（broadcast 模式）</text>
+            <text x="705" y="142" class="xs t3" text-anchor="middle">首读者接管写端缓冲，后来者新建小缓冲</text>
+            <path d="M520 84 h56" stroke="var(--c7)" stroke-width="1.6" fill="none" marker-end="url(#ah7)"/>
+            <path d="M520 106 h56" stroke="var(--c7)" stroke-width="1.6" fill="none" marker-end="url(#ah7)"/>
+            <!-- 分发说明 -->
+            <rect x="30" y="170" width="800" height="46" rx="8" fill="var(--t3)" stroke="var(--c3)"/>
+            <text x="430" y="190" class="sm" text-anchor="middle">port_write 分发：对每个读端口写入全部包，<tspan style="font-weight:700">每写一包唤醒一个阻塞读者</tspan>（先组等待队列后端口队列）</text>
+            <text x="430" y="208" class="xs t2" text-anchor="middle">任一读者被唤醒 → thread_yield；某读者缓冲满 → 该读者得 ERR_PARTIAL_WRITE</text>
+            <!-- group -->
+            <rect x="30" y="232" width="800" height="52" rx="8" fill="var(--tgray)" stroke="var(--line)"/>
+            <text x="430" y="252" class="sm" text-anchor="middle">port_group_t：把多个读端口组成一组，port_read 阻塞在组的等待队列上 —— 一次等待多个消息源</text>
+            <text x="430" y="272" class="xs t3" text-anchor="middle">写端销毁后：读者先读完余包，再得到 ERR_CANCELLED 而非永久阻塞（2026-10 修复）</text>
+        </svg>
+        <figcaption><b>图 7</b> · port 读写模型。最近的提交 9bd0b453 修复了写端销毁后的读取、多包只唤醒一个读者导致的队头阻塞，以及若干泄漏。</figcaption>
+        </figure>
+
+        <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">port 使用示例</span><button class="copy">复制</button></div>
+<pre class="code"><code>port_t  *wp, *rp;
+
+port_create(&amp;wp, "events", PORT_MODE_UNICAST);
+port_open("events", &amp;rp);                 /* 第一个读者接管缓冲 */
+
+port_packet_t pkt = { .key = 0x1234, .value = (uintptr_t)ctx };
+port_write(wp, &amp;pkt, 1);                  /* 唤醒一个读者 */
+
+port_packet_t rx;
+status_t err = port_read(rp, &amp;rx, INFINITE_TIME);  /* 空则睡眠 */
+/* 写端已销毁且缓冲排空时返回 ERR_CANCELLED */</code></pre></div>
+    </section>
+
+    <!-- ================= 07 内存管理 ================= -->
+    <section class="sec" id="mem">
+        <div class="sec-head"><div class="sec-no">07</div><h2>内存管理</h2></div>
+        <p class="sec-lede">两条主线：<strong>物理内存与堆</strong>（pmm/novm → page_alloc → 三选一的 malloc 实现）和
+        <strong>虚拟内存</strong>（vmm 地址空间/区域管理 → arch_mmu 页表后端）。no-MMU 平台整条 VM 线退化为 novm 位图分配器，接口不变。</p>
+
+        <figure class="fig">
+        <svg viewBox="0 0 860 470" role="img" aria-label="内存管理分层">
+            <defs>
+                <marker id="ah8b" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--c1)"/></marker>
+                <marker id="ah8v" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--c7)"/></marker>
+            </defs>
+            <!-- 顶层 API -->
+            <rect x="30" y="24" width="480" height="52" rx="9" fill="var(--t3)" stroke="var(--c3)" stroke-width="1.4"/>
+            <text x="270" y="48" class="lbl" text-anchor="middle">malloc / free / memalign / calloc / realloc</text>
+            <text x="270" y="66" class="xs t3" text-anchor="middle">lib/heap/heap_wrapper.c — 统一门面 + heap_delayed_free 延迟释放链</text>
+            <!-- 三实现 -->
+            <rect x="30" y="100" width="150" height="88" rx="9" fill="var(--t3)" stroke="var(--c3)"/>
+            <text x="105" y="124" class="sm" text-anchor="middle" style="font-weight:700">miniheap</text>
+            <text x="105" y="144" class="xs t2" text-anchor="middle">地址有序空闲链</text>
+            <text x="105" y="160" class="xs t2" text-anchor="middle">first-fit + 双向合并</text>
+            <text x="105" y="176" class="xs t3" text-anchor="middle">make 默认</text>
+            <rect x="195" y="100" width="150" height="88" rx="9" fill="var(--t3)" stroke="var(--c3)"/>
+            <text x="270" y="124" class="sm" text-anchor="middle" style="font-weight:700">cmpctmalloc</text>
+            <text x="270" y="144" class="xs t2" text-anchor="middle">尺寸分桶(128/136)</text>
+            <text x="270" y="160" class="xs t2" text-anchor="middle">位图找桶 + 急切合并</text>
+            <text x="270" y="176" class="xs t3" text-anchor="middle">碎片最优</text>
+            <rect x="360" y="100" width="150" height="88" rx="9" fill="var(--t3)" stroke="var(--c3)"/>
+            <text x="435" y="124" class="sm" text-anchor="middle" style="font-weight:700">dlmalloc</text>
+            <text x="435" y="144" class="xs t2" text-anchor="middle">经典 Doug Lea</text>
+            <text x="435" y="160" class="xs t2" text-anchor="middle">分箱 + 边界标记</text>
+            <text x="435" y="176" class="xs t3" text-anchor="middle">external/ 引入</text>
+            <!-- page_alloc -->
+            <rect x="30" y="212" width="480" height="50" rx="9" fill="var(--surface)" stroke="var(--line)" stroke-width="1.2"/>
+            <text x="270" y="234" class="sm" text-anchor="middle" style="font-weight:650">page_alloc — 可移植页分配门面（lib/heap/page_alloc.c）</text>
+            <text x="270" y="252" class="xs t3" text-anchor="middle">按 WITH_KERNEL_VM 编译期选择后端</text>
+            <!-- pmm / novm -->
+            <rect x="30" y="286" width="230" height="96" rx="9" fill="var(--t1)" stroke="var(--c1)" stroke-width="1.4"/>
+            <text x="145" y="310" class="lbl" text-anchor="middle">PMM <tspan class="mono t3">kernel/vm/pmm.c</tspan></text>
+            <text x="145" y="330" class="xs t2" text-anchor="middle">arena 按优先级排队 · 每物理页一个</text>
+            <text x="145" y="346" class="xs t2" text-anchor="middle">vm_page_t 结构 · 侵入式空闲链表</text>
+            <text x="145" y="362" class="xs t2" text-anchor="middle">支持 alloc_range（指定物理段）与</text>
+            <text x="145" y="376" class="xs t2" text-anchor="middle">alloc_contiguous（DMA 连续页）</text>
+            <rect x="280" y="286" width="230" height="96" rx="9" fill="var(--tgray)" stroke="var(--line)" stroke-width="1.3"/>
+            <text x="395" y="310" class="lbl" text-anchor="middle">novm <tspan class="mono t3">kernel/novm/novm.c</tspan></text>
+            <text x="395" y="330" class="xs t2" text-anchor="middle">no-MMU 后备：每 arena 一张</text>
+            <text x="395" y="346" class="xs t2" text-anchor="middle">"1 字节/页"位图 · first-fit 扫描</text>
+            <text x="395" y="362" class="xs t2" text-anchor="middle">对齐残料供堆自举（unaligned 区）</text>
+            <text x="395" y="378" class="xs t3" text-anchor="middle">接口与 PMM 同构</text>
+            <!-- bootalloc -->
+            <rect x="30" y="406" width="480" height="48" rx="9" fill="var(--tgray)" stroke="var(--line)" stroke-dasharray="4 3"/>
+            <text x="270" y="426" class="sm" text-anchor="middle" style="font-weight:650">bootalloc — 启动期 bump 分配器（kernel/vm/bootalloc.c）</text>
+            <text x="270" y="444" class="xs t3" text-anchor="middle">紧跟内核镜像 _end 只进不出；为 PMM 的 page_array 等前期结构服务</text>
+            <!-- 竖直箭头 -->
+            <path d="M270 76 v22" stroke="var(--c3)" stroke-width="1.6" fill="none" marker-end="url(#ah8b)"/>
+            <path d="M270 188 v22" stroke="var(--c3)" stroke-width="1.6" fill="none" marker-end="url(#ah8b)"/>
+            <path d="M145 262 v22" stroke="var(--c1)" stroke-width="1.6" fill="none" marker-end="url(#ah8b)"/>
+            <path d="M395 262 v22" stroke="var(--ink-2)" stroke-width="1.4" fill="none" marker-end="url(#ah)"/>
+            <!-- 右列 VMM -->
+            <rect x="560" y="100" width="270" height="120" rx="10" fill="var(--t7)" stroke="var(--c7)" stroke-width="1.5"/>
+            <text x="695" y="126" class="lbl" text-anchor="middle">VMM <tspan class="mono t3">kernel/vm/vmm.c</tspan></text>
+            <text x="695" y="148" class="xs t2" text-anchor="middle">vmm_aspace_t：地址空间 = 区域按地址排序</text>
+            <text x="695" y="164" class="xs t2" text-anchor="middle">region_list + 内嵌 arch_aspace_t（页表）</text>
+            <text x="695" y="180" class="xs t2" text-anchor="middle">虚拟分配 = first-fit 找缝隙（alloc_spot）</text>
+            <text x="695" y="196" class="xs t2" text-anchor="middle">内核地址空间静态创建；用户地址空间</text>
+            <text x="695" y="212" class="xs t2" text-anchor="middle">随线程切换（vmm_context_switch）</text>
+            <rect x="560" y="242" width="270" height="64" rx="10" fill="var(--t7)" stroke="var(--c7)" stroke-width="1.3"/>
+            <text x="695" y="266" class="lbl" text-anchor="middle">arch_mmu（各 arch 实现）</text>
+            <text x="695" y="286" class="xs t2" text-anchor="middle">map/unmap/query/protect/context_switch</text>
+            <path d="M695 220 v20" stroke="var(--c7)" stroke-width="1.6" fill="none" marker-end="url(#ah8v)"/>
+            <path d="M560 150 C 500 150, 520 300, 262 330" stroke="var(--c7)" stroke-width="1.6" fill="none" marker-end="url(#ah8v)"/>
+            <text x="505" y="330" class="xs t3" text-anchor="end">映射时向 PMM 要物理页</text>
+            <path d="M695 306 C 695 360, 300 400, 268 404" stroke="var(--c7)" stroke-width="1.2" stroke-dasharray="5 4" fill="none" marker-end="url(#ah8v)"/>
+            <text x="700" y="380" class="xs t3">标记初始映射占用</text>
+        </svg>
+        <figcaption><b>图 8</b> · 内存管理分层。左列为分配器主线（malloc → 堆实现 → 页分配 → 物理内存），右列为虚拟内存线（vmm → arch_mmu → pmm）。</figcaption>
+        </figure>
+
+        <h3>三种堆实现怎么选</h3>
+        <div class="tbl-wrap"><table class="tbl">
+            <tr><th></th><th>miniheap</th><th>cmpctmalloc</th><th>dlmalloc</th></tr>
+            <tr><td><strong>算法</strong></td><td>地址升序单链空闲表，first-fit；释放时按序插回并前后合并</td><td>按尺寸分 128/136 个桶（每数量级 8 桶）+ 位图找非空桶；两字头边界标记，释放即与左右邻居急切合并</td><td>经典 Doug Lea：分箱空闲表 + top 块切割（MSPACES 构建）</td></tr>
+            <tr><td><strong>复杂度</strong></td><td>分配/释放 O(n)，但实现极简、省元数据</td><td>近 O(1)；大块（&gt;4MB）直达页分配器</td><td>O(1) 均摊，久经考验</td></tr>
+            <tr><td><strong>适用</strong></td><td>默认（make）；小内存简单场景</td><td>碎片敏感的长期运行；do-qemu* 脚本默认 dlmalloc/-c 可切换</td><td>需要与 dlmalloc 生态行为一致时</td></tr>
+            <tr><td><strong>增长</strong></td><td colspan="3" style="color:var(--ink-2)">都用 page_alloc 向系统要页（WITH_KERNEL_VM 每次 1MB，否则 4KB）；cmpctmalloc 能把整页空闲块还回去</td></tr>
+        </table></div>
+
+        <div class="note info"><span class="ic">ⓘ</span><div><b>heap_delayed_free</b>：在中断上下文/持自旋锁时不能直接 free（malloc 族都要锁），
+        <code>heap_delayed_free()</code> 把块挂到延迟链上（复用被释放块自身存放链节点），任何一次分配前先排空该链。
+        线程栈的释放正是靠它跨过"正在切换走"的窗口。</div></div>
+
+        <h3>PMM：物理页的真相</h3>
+        <p>平台用 <code>pmm_add_arena()</code> 登记物理内存区域（名字、优先级、起址、页数）。PMM 为 arena 内<strong>每一页</strong>分配一个
+        <code>vm_page_t</code>（由 bootalloc 出内存），空闲页以侵入式链表串在 arena 的 free_list 上——不是位图，查询/归还都是 O(1) 摘链挂链。
+        分配按 arena 优先级顺序取；<code>pmm_alloc_range()</code> 可指定物理地址段（保留初始化镜像用），<code>pmm_alloc_contiguous()</code>
+        在 KMAP arena 里对齐扫描出连续物理页（DMA 场景），<code>pmm_alloc_kpages()</code> 返回可直接内核寻址的页。</p>
+
+        <h3>VMM：地址空间与区域</h3>
+        <p>每个地址空间（<code>vmm_aspace_t</code>）是<strong>按起始地址排序的区域链表</strong>，区域（region）记录名字、权限、
+        arch_mmu 标志与归属页链。虚拟地址分配是在区域缝隙里 first-fit（<code>alloc_spot</code>，arch 可覆写 <code>arch_mmu_pick_spot</code>
+        施加对齐/范围约束）。内核地址空间在 <code>vmm_init_preheap</code> 中静态创建并覆盖 KERNEL_ASPACE；用户地址空间
+        （USER_ASPACE_BASE 起，两端留 16MB 护栏）可按需创建并挂到线程上切换。</p>
+
+        <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">VMM 常用 API — kernel/include/kernel/vm.h</span><button class="copy">复制</button></div>
+<pre class="code"><code>/* 取内核地址空间（静态存在） */
+vmm_aspace_t *kaspace = vmm_get_kernel_aspace();
+
+/* 分配一片虚拟内存（物理页由 PMM 供给并映射） */
+void *ptr;
+vmm_alloc(kaspace, "mybuf", 0x10000, &amp;ptr, 0, 0, ARCH_MMU_FLAG_CACHED);
+
+/* DMA 场景：物理连续 */
+paddr_t pa;
+vmm_alloc_contiguous(kaspace, "dma", 0x20000, &amp;ptr, 12, &amp;pa, 0,
+                     ARCH_MMU_FLAG_UNCACHED_DEVICE);
+
+/* 直接映射已知物理地址（MMIO 寄存器等） */
+vmm_alloc_physical(kaspace, "uart", 0x1000, &amp;ptr,
+                   0, uart_paddr, 0, ARCH_MMU_FLAG_UNCACHED_DEVICE);
+
+/* 虚拟地址 ↔ 物理地址 */
+paddr_t p = vaddr_to_paddr(some_ptr);</code></pre></div>
+
+        <figure class="fig">
+        <svg viewBox="0 0 860 470" role="img" aria-label="arm64 地址空间布局">
+            <defs>
+                <marker id="ah9" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--ink-2)"/></marker>
+            </defs>
+            <!-- 用户 -->
+            <text x="180" y="34" class="lbl" text-anchor="middle">用户地址空间</text>
+            <text x="180" y="52" class="xs mono t3" text-anchor="middle">TTBR0</text>
+            <rect x="60" y="62" width="240" height="330" rx="8" fill="var(--t7)" stroke="var(--c7)" stroke-width="1.4"/>
+            <text x="180" y="90" class="xs mono" text-anchor="middle">0x0000_ffff_fdff_ffff</text>
+            <text x="180" y="120" class="sm t2" text-anchor="middle">USER_ASPACE_SIZE</text>
+            <text x="180" y="140" class="xs mono t3" text-anchor="middle">0x0000_ffff_fe00_0000</text>
+            <text x="180" y="205" class="sm t2" text-anchor="middle">用户区域（随线程切换）</text>
+            <text x="180" y="225" class="xs t3" text-anchor="middle">vmm_create_aspace 创建</text>
+            <text x="180" y="245" class="xs t3" text-anchor="middle">需 arch 支持用户页表</text>
+            <line x1="70" y1="352" x2="290" y2="352" stroke="var(--c7)" stroke-width="1" stroke-dasharray="4 3"/>
+            <text x="180" y="372" class="xs mono" text-anchor="middle">0x0000_0000_0100_0000</text>
+            <text x="180" y="390" class="xs t3" text-anchor="middle">USER_ASPACE_BASE（下方 16MB 护栏）</text>
+            <!-- 内核 -->
+            <text x="620" y="34" class="lbl" text-anchor="middle">内核地址空间</text>
+            <text x="620" y="52" class="xs mono t3" text-anchor="middle">TTBR1</text>
+            <rect x="500" y="62" width="240" height="330" rx="8" fill="var(--t1)" stroke="var(--c1)" stroke-width="1.4"/>
+            <text x="620" y="90" class="xs mono" text-anchor="middle">0xffff_ffff_ffff_ffff</text>
+            <text x="620" y="118" class="sm t2" text-anchor="middle">KERNEL_ASPACE_SIZE = 256TB</text>
+            <rect x="515" y="140" width="210" height="64" rx="7" fill="var(--c1)" fill-opacity="0.16" stroke="var(--c1)"/>
+            <text x="620" y="164" class="sm" text-anchor="middle" style="font-weight:650">KERNEL_BASE（链接地址）</text>
+            <text x="620" y="182" class="xs t2" text-anchor="middle">= KERNEL_ASPACE_BASE</text>
+            <text x="620" y="196" class="xs t2" text-anchor="middle">内核镜像映射于此</text>
+            <rect x="515" y="216" width="210" height="64" rx="7" fill="var(--t1)" stroke="var(--c1)" stroke-dasharray="4 3"/>
+            <text x="620" y="240" class="sm" text-anchor="middle" style="font-weight:650">physmap 直映窗口</text>
+            <text x="620" y="258" class="xs t2" text-anchor="middle">mmu_initial_mappings 定义</text>
+            <text x="620" y="272" class="xs t2" text-anchor="middle">paddr_to_kvaddr() 快速路径</text>
+            <text x="620" y="330" class="xs t3" text-anchor="middle">qemu-virt-arm64：</text>
+            <text x="620" y="348" class="xs mono t2" text-anchor="middle">MEMBASE 0x40000000</text>
+            <text x="620" y="366" class="xs mono t2" text-anchor="middle">MEMSIZE 512MB</text>
+            <text x="620" y="390" class="xs mono" text-anchor="middle">0xffff_0000_0000_0000</text>
+            <!-- 中缝注解 -->
+            <path class="arr dash" d="M310 60 v334"/>
+            <path class="arr dash" d="M490 60 v334"/>
+            <text x="400" y="120" class="xs t2" text-anchor="middle">arm64 4 级页表</text>
+            <text x="400" y="138" class="xs t2" text-anchor="middle">48 位 VA 一分为二</text>
+            <text x="400" y="156" class="xs t2" text-anchor="middle">（页大小可配</text>
+            <text x="400" y="174" class="xs t2" text-anchor="middle">4K/16K/64K，</text>
+            <text x="400" y="192" class="xs t2" text-anchor="middle">有独立工程验证）</text>
+            <text x="400" y="240" class="xs t3" text-anchor="middle">启动早期</text>
+            <text x="400" y="258" class="xs t3" text-anchor="middle">start.S 已按</text>
+            <text x="400" y="276" class="xs t3" text-anchor="middle">initial mappings</text>
+            <text x="400" y="294" class="xs t3" text-anchor="middle">手工建好内核表</text>
+        </svg>
+        <figcaption><b>图 9</b> · arm64（48 位 VA）地址空间布局。内核占据高半区，用户区当前树中无消费者，但机制完整保留。</figcaption>
+        </figure>
+
+        <h3>no-MMU 形态</h3>
+        <p>未定义 <code>WITH_KERNEL_VM</code> 时（多数 Cortex-M / 小型 RISC-V 目标），PMM/VMM 整条线替换为
+        <code>kernel/novm/novm.c</code>：每 arena 一张"1 字节每页"的位图，first-fit 扫描分配；arena 起点以下的非对齐残料
+        （不足一页但 ≥64B）作为 <code>novm_alloc_unaligned()</code> 的一次性内存，恰好用于给堆自举。
+        上层 heap / page_alloc 接口完全一致——<strong>同一套内核代码在 MMU 与 no-MMU 间自由切换</strong>，这是 LK 可移植性的关键设计。</p>
+    </section>
+
+    <!-- ================= 08 定时器 ================= -->
+    <section class="sec" id="timer">
+        <div class="sec-head"><div class="sec-no">08</div><h2>定时器</h2></div>
+        <p class="sec-lede">kernel/timer.c 是一个精巧的 per-CPU 有序定时器轮：插入 O(n)、到期处理 O(k)，
+        配合平台 one-shot 定时器实现"按需下一次中断"；没有动态定时器的平台退化为 10ms 周期心跳。</p>
+
+        <figure class="fig">
+        <svg viewBox="0 0 860 350" role="img" aria-label="定时器子系统">
+            <defs>
+                <marker id="ah10" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--c1)"/></marker>
+            </defs>
+            <!-- 队列 -->
+            <text x="30" y="34" class="lbl">per-CPU 有序队列（升序 scheduled_time，全局 timer_lock）</text>
+            <rect x="30" y="48" width="110" height="64" rx="8" fill="var(--t1)" stroke="var(--c1)" stroke-width="1.5"/>
+            <text x="85" y="72" class="sm mono" text-anchor="middle">t=12ms</text>
+            <text x="85" y="90" class="xs t2" text-anchor="middle">handler A</text>
+            <text x="85" y="104" class="xs t3" text-anchor="middle">队头</text>
+            <path class="arrc1" d="M140 80 h26"/>
+            <rect x="170" y="48" width="110" height="64" rx="8" fill="var(--t1)" stroke="var(--c1)"/>
+            <text x="225" y="72" class="sm mono" text-anchor="middle">t=30ms</text>
+            <text x="225" y="90" class="xs t2" text-anchor="middle">handler B</text>
+            <text x="225" y="104" class="xs t3" text-anchor="middle">周期 10ms</text>
+            <path class="arrc1" d="M280 80 h26"/>
+            <rect x="310" y="48" width="110" height="64" rx="8" fill="var(--t1)" stroke="var(--c1)"/>
+            <text x="365" y="72" class="sm mono" text-anchor="middle">t=45ms</text>
+            <text x="365" y="90" class="xs t2" text-anchor="middle">handler C</text>
+            <text x="365" y="104" class="xs t3" text-anchor="middle">一次性</text>
+            <path class="arrc1" d="M85 112 v26 h0"/>
+            <text x="85" y="152" class="xs" text-anchor="middle" style="fill:var(--c1);font-weight:650">platform_set_oneshot_timer(12ms)</text>
+            <text x="30" y="180" class="xs t2">timer_set：O(n) 有序插入；若成为新队头 → 立即重编程硬件</text>
+            <text x="30" y="198" class="xs t2">timer_cancel：摘除后按新队头重编程（队列空则停表）</text>
+
+            <!-- 到期循环 -->
+            <rect x="470" y="40" width="360" height="180" rx="10" fill="var(--surface)" stroke="var(--grid)"/>
+            <text x="650" y="66" class="lbl" text-anchor="middle">timer_tick（中断上下文）</text>
+            <text x="494" y="94" class="xs t2">while (队头 scheduled_time &lt; now) {</text>
+            <text x="506" y="114" class="xs t2">摘下队头；<tspan style="font-weight:650">释放 timer_lock</tspan> 后执行回调</text>
+            <text x="506" y="132" class="xs t2">（回调里可再 timer_set / 取锁重排）</text>
+            <text x="506" y="152" class="xs t2">周期定时器：scheduled += period，落后过多</text>
+            <text x="506" y="170" class="xs t2">则钳到 now+period（补课上限）</text>
+            <text x="506" y="190" class="xs t2">回调返回 INT_RESCHEDULE → 记住，最后上抛</text>
+            <text x="494" y="210" class="xs t2">}</text>
+
+            <!-- 两种平台模式 -->
+            <rect x="30" y="228" width="390" height="104" rx="10" fill="var(--t3)" stroke="var(--c3)" stroke-width="1.3"/>
+            <text x="225" y="252" class="sm" text-anchor="middle" style="font-weight:700">有动态定时器的平台（如 qemu-virt arm timer）</text>
+            <text x="225" y="274" class="xs t2" text-anchor="middle">到期后只为新队头再设一次 one-shot —— 空闲时零定时中断</text>
+            <text x="225" y="294" class="xs t2" text-anchor="middle">thread_sleep / 等待超时 / 抢占都挂在这条链上</text>
+            <text x="225" y="316" class="xs t3" text-anchor="middle">preempt_timer（时间片）也经此实现</text>
+            <rect x="440" y="228" width="390" height="104" rx="10" fill="var(--tgray)" stroke="var(--line)" stroke-width="1.2"/>
+            <text x="635" y="252" class="sm" text-anchor="middle" style="font-weight:700">无动态定时器的平台</text>
+            <text x="635" y="274" class="xs t2" text-anchor="middle">platform_set_periodic_timer(timer_tick, 10ms) 固定心跳</text>
+            <text x="635" y="294" class="xs t2" text-anchor="middle">每次心跳顺带跑 thread_timer_tick() 消减时间片</text>
+            <text x="635" y="314" class="xs t3" text-anchor="middle">粒度 10ms，实现最简</text>
+        </svg>
+        <figcaption><b>图 10</b> · 定时器队列与到期循环。<code>timer_t</code> 只有 magic、链节点、scheduled/periodic_time、回调与参数几个字段。</figcaption>
+        </figure>
+
+        <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">kernel/include/kernel/timer.h — 定时器 API</span><button class="copy">复制</button></div>
+<pre class="code"><code>timer_t tmr;
+timer_initialize(&amp;tmr);                       /* 或 TIMER_INITIAL_VALUE() */
+
+timer_set_oneshot(&amp;tmr, 50, my_handler, arg); /* 50ms 后触发一次 */
+timer_set_periodic(&amp;tmr, 10, tick, arg);      /* 每 10ms（0 钳为 1） */
+timer_cancel(&amp;tmr);                           /* 摘除并按需重编程 */
+
+/* 回调运行在中断上下文，返回值决定是否触发重调度 */
+enum handler_return my_handler(timer_t *t, lk_time_t now, void *arg) {
+    return INT_RESCHEDULE;    /* 让中断返回路径进入 thread_preempt() */
+}</code></pre></div>
+        <p>所有睡眠语义最终都落到这条链上：<code>thread_sleep()</code> 挂 <code>thread_sleep_handler</code>，
+        带超时的 <code>wait_queue_block()</code> 挂 <code>wait_queue_timeout_handler</code>，
+        时间片由每 CPU 的 <code>preempt_timer</code> 驱动——回调返回 <code>INT_RESCHEDULE</code> 即刻抢占。</p>
+    </section>
+
+    <!-- ================= 09 中断与 SMP ================= -->
+    <section class="sec" id="irq">
+        <div class="sec-head"><div class="sec-no">09</div><h2>中断与 SMP</h2></div>
+        <p class="sec-lede">中断是抢占的引擎：处理函数的返回值直接决定"要不要在返回用户现场前重调度"。
+        SMP 则靠两枚 SGI 软中断完成核间唤醒与同步执行。</p>
+
+        <figure class="fig">
+        <svg viewBox="0 0 860 330" role="img" aria-label="arm64 中断路径">
+            <defs>
+                <marker id="ah11" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--c8)"/></marker>
+                <marker id="ah11g" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--ink-2)"/></marker>
+            </defs>
+            <!-- 主链 -->
+            <rect x="24" y="30" width="150" height="64" rx="9" fill="var(--t8)" stroke="var(--c8)" stroke-width="1.4"/>
+            <text x="99" y="54" class="lbl" text-anchor="middle">硬件中断</text>
+            <text x="99" y="74" class="xs t2" text-anchor="middle">GICv3 分发到某核</text>
+
+            <rect x="200" y="30" width="170" height="64" rx="9" fill="var(--t2)" stroke="var(--c2)" stroke-width="1.4"/>
+            <text x="285" y="52" class="sm" text-anchor="middle" style="font-weight:700">VBAR_EL1 向量表</text>
+            <text x="285" y="70" class="xs t2" text-anchor="middle">exceptions.S：保存短帧</text>
+            <text x="285" y="86" class="xs t2" text-anchor="middle">(x0–x17 + elr/spsr)</text>
+
+            <rect x="396" y="30" width="180" height="64" rx="9" fill="var(--t2)" stroke="var(--c2)" stroke-width="1.4"/>
+            <text x="486" y="52" class="sm" text-anchor="middle" style="font-weight:700">platform_irq</text>
+            <text x="486" y="70" class="xs t2" text-anchor="middle">读 ICC_IAR 得向量号</text>
+            <text x="486" y="86" class="xs t2" text-anchor="middle">≥1020 为伪中断直接回</text>
+
+            <rect x="602" y="30" width="234" height="64" rx="9" fill="var(--t2)" stroke="var(--c2)" stroke-width="1.4"/>
+            <text x="719" y="52" class="sm" text-anchor="middle" style="font-weight:700">查处理函数表并调用</text>
+            <text x="719" y="70" class="xs t2" text-anchor="middle">&lt;32：per-CPU 表（SGI/PPI）</text>
+            <text x="719" y="86" class="xs t2" text-anchor="middle">≥32：共享表；完事 ICC_EOIR 应答</text>
+
+            <path d="M174 62 h20" stroke="var(--c8)" stroke-width="1.6" fill="none" marker-end="url(#ah11)"/>
+            <path d="M370 62 h20" stroke="var(--c8)" stroke-width="1.6" fill="none" marker-end="url(#ah11)"/>
+            <path d="M576 62 h20" stroke="var(--c8)" stroke-width="1.6" fill="none" marker-end="url(#ah11)"/>
+
+            <!-- 返回值分支 -->
+            <rect x="200" y="140" width="180" height="56" rx="9" fill="var(--surface)" stroke="var(--line)" stroke-width="1.3"/>
+            <text x="290" y="164" class="sm" text-anchor="middle" style="font-weight:650">handler 返回值</text>
+            <text x="290" y="182" class="xs mono t2" text-anchor="middle">INT_NO_RESCHEDULE / INT_RESCHEDULE</text>
+            <path d="M719 94 C 719 130, 420 120, 386 150" stroke="var(--c8)" stroke-width="1.6" fill="none" marker-end="url(#ah11)"/>
+
+            <rect x="60" y="216" width="300" height="56" rx="9" fill="var(--t1)" stroke="var(--c1)" stroke-width="1.4"/>
+            <text x="210" y="240" class="sm" text-anchor="middle" style="font-weight:700">是 → thread_preempt()</text>
+            <text x="210" y="258" class="xs t2" text-anchor="middle">当前线程按剩余配额回队首/队尾 → thread_resched</text>
+            <rect x="500" y="216" width="300" height="56" rx="9" fill="var(--tgray)" stroke="var(--line)" stroke-width="1.2"/>
+            <text x="650" y="240" class="sm" text-anchor="middle" style="font-weight:700">否 → 直接恢复现场返回</text>
+            <text x="650" y="258" class="xs t2" text-anchor="middle">irq_exception_body 的 cbz x0 判零路径</text>
+            <path d="M270 196 C 260 205, 240 208, 230 214" stroke="var(--c1)" stroke-width="1.6" fill="none" marker-end="url(#ah10)"/>
+            <path d="M330 196 C 400 208, 540 210, 590 214" stroke="var(--ink-2)" stroke-width="1.4" fill="none" marker-end="url(#ah11g)"/>
+
+            <!-- 注册 API + SGI -->
+            <rect x="60" y="288" width="740" height="0"/>
+            <text x="30" y="300" class="xs mono t2">register_int_handler(vector, handler, arg)  /* dev/interrupt/arm_gic/arm_gic.c:94 — gicd_lock 下登记 */</text>
+        </svg>
+        <figcaption><b>图 11</b> · arm64 中断进入与返回。<tspan style="font-weight:650">INT_RESCHEDULE 是抢占在内核里的唯一消费点</tspan>——
+        定时器、IPC、驱动都通过让处理函数返回它来"请求尽快切线程"。</figcaption>
+        </figure>
+
+        <h3>核间中断（IPI）与 SMP 服务</h3>
+        <div class="tbl-wrap"><table class="tbl">
+            <tr><th>SGI</th><th>枚举</th><th>处理函数</th><th>作用</th></tr>
+            <tr><td>14</td><td><code>MP_IPI_GENERIC</code></td><td><code>mp_mbx_generic_irq</code></td><td>排空本核的 mp_sync_queue 并执行任务，返回 NO_RESCHEDULE</td></tr>
+            <tr><td>15</td><td><code>MP_IPI_RESCHEDULE</code></td><td><code>mp_mbx_reschedule_irq</code></td><td>只要本核活跃就返回 INT_RESCHEDULE——唤醒空闲核去抢新就绪线程</td></tr>
+        </table></div>
+        <ul>
+            <li><strong><code>mp_reschedule(target, mask, flags)</code></strong>（kernel/mp.c:58）：把目标集合与 <code>mp.active_cpus</code> 相与，
+            剔除实时核（除非调用者带 REALTIME 标志）与本核后发 SGI15。唤醒线程时未钉住 → 广播其他核，钉住 → 单发目标核</li>
+            <li><strong><code>mp_sync_exec_cpus(fn, mask, ctx)</code></strong>（kernel/mp.c:92）：在指定核集合上同步执行一个函数——
+            任务描述符就放在调用者栈上，入队后发 SGI14，本核若在集合中也就地执行，然后自旋等 <code>outstanding</code> 归零。
+            典型用户：TLB 击落、跨核的 MMU/缓存操作</li>
+            <li><strong>空闲/实时掩码</strong>：调度器每次换线程都更新 <code>mp.idle_cpus / realtime_cpus</code>（换到 idle 线程即标记本核空闲），
+            供唤醒决策参考</li>
+        </ul>
+
+        <h3>上下文切换的真相（arm64）</h3>
+        <p><code>arch_context_switch()</code> 做三件事：惰性保存 FPU 现场；SMP 下先 <code>DSB</code> 等 TLB 广播完成；
+        然后跳进汇编 <code>arm64_context_switch</code>（arch/arm64/asm.S:14）——保存 x19–x28 与 tpidr 对、把当前 SP 存进旧线程结构、
+        装上新线程的 SP 后 <code>ret</code> 进新现场。<strong>x18（per-CPU 指针）刻意不保存</strong>：它是每核属性而非线程属性。
+        新生线程从 <code>initial_thread_func</code> 起跑，第一件事就是释放隐式持有的 thread_lock 并开中断。</p>
+
+        <div class="note info"><span class="ic">ⓘ</span><div><b>自旋锁的两种口味</b>：SMP 下用 ldaxr/stxr 排他访问 + wfe 等待（注释详细记录了 lost-monitor 重试的理由，连 QEMU 行为都考虑了）；
+        UP 编译直接退化为"置位即成功"的占位实现。通用层提供 <code>spin_lock_irqsave/restore</code> 变体与 C++ RAII 包装——约定是<strong>持锁期间关中断</strong>，
+        thread_lock 就是这么用的。</div></div>
+    </section>
+
+    <!-- ================= 10 设备与 IO 栈 ================= -->
+    <section class="sec" id="drivers">
+        <div class="sec-head"><div class="sec-no">10</div><h2>设备与 IO 栈</h2></div>
+        <p class="sec-lede">LK 没有统一的"设备模型"，而是两条清晰的栈：<strong>字符/控制台栈</strong>（printf 到 UART）与
+        <strong>块设备栈</strong>（文件系统到磁盘）。dev/ 目录按外设类别组织驱动，皆以普通模块 + 链接段/注册表方式挂入。</p>
+
+        <figure class="fig">
+        <svg viewBox="0 0 860 580" role="img" aria-label="控制台与存储两条 IO 栈">
+            <defs>
+                <marker id="ah12" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--ink-2)"/></marker>
+                <marker id="ah12b" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--c7)"/></marker>
+            </defs>
+            <!-- 左列：控制台 -->
+            <text x="30" y="32" class="lbl" style="fill:var(--c3)">字符栈 · 控制台路径</text>
+            <rect x="30" y="46" width="330" height="44" rx="8" fill="var(--t3)" stroke="var(--c3)"/><text x="195" y="66" class="sm" text-anchor="middle">printf / dprintf（DEBUGLEVEL 门控）</text><text x="195" y="82" class="xs t3" text-anchor="middle">lib/libc/stdio.c</text>
+            <rect x="30" y="112" width="330" height="44" rx="8" fill="var(--t3)" stroke="var(--c3)"/><text x="195" y="132" class="sm" text-anchor="middle">stdout 的 io_handle（console_io）</text><text x="195" y="148" class="xs t3" text-anchor="middle">lib/io — 通用读写钩子抽象</text>
+            <rect x="30" y="178" width="330" height="56" rx="8" fill="var(--t3)" stroke="var(--c3)" stroke-width="1.4"/>
+            <text x="195" y="200" class="sm" text-anchor="middle" style="font-weight:700">out_count()</text>
+            <text x="195" y="218" class="xs t2" text-anchor="middle">print_spin_lock 下扇出全部 print_callback</text>
+            <rect x="384" y="178" width="120" height="56" rx="8" fill="var(--t3)" stroke="var(--c3)" stroke-dasharray="4 3"/>
+            <text x="444" y="200" class="xs t2" text-anchor="middle">gfxconsole</text>
+            <text x="444" y="216" class="xs t3" text-anchor="middle">帧缓冲镜像</text>
+            <rect x="384" y="244" width="120" height="40" rx="8" fill="var(--t3)" stroke="var(--c3)" stroke-dasharray="4 3"/>
+            <text x="444" y="262" class="xs t2" text-anchor="middle">cdcconsole</text>
+            <text x="444" y="276" class="xs t3" text-anchor="middle">USB 串口镜像</text>
+            <rect x="30" y="252" width="330" height="44" rx="8" fill="var(--t3)" stroke="var(--c3)"/><text x="195" y="272" class="sm" text-anchor="middle">platform_dputc（逐字符）</text><text x="195" y="288" class="xs t3" text-anchor="middle">platform/&lt;板&gt;/debug.c</text>
+            <rect x="30" y="318" width="330" height="44" rx="8" fill="var(--t2)" stroke="var(--c2)"/><text x="195" y="338" class="sm" text-anchor="middle">dev/uart — pl011 / dwc8250</text><text x="195" y="354" class="xs t3" text-anchor="middle">TX 轮询输出（panic 有专用 pputc 变体）</text>
+            <!-- 输入支路 -->
+            <rect x="30" y="384" width="330" height="44" rx="8" fill="var(--t1)" stroke="var(--c1)"/>
+            <text x="195" y="404" class="sm" text-anchor="middle">输入：UART RX 中断 → cbuf 环形缓冲</text>
+            <text x="195" y="420" class="xs t3" text-anchor="middle">getchar() → console_io read → __debug_stdio_read</text>
+            <path class="arr" d="M195 90 v20"/><path class="arr" d="M195 156 v20"/><path class="arr" d="M195 234 v16"/><path class="arr" d="M195 296 v20"/>
+            <path class="arr" d="M360 206 h22"/><path class="arr" d="M360 264 C 372 264, 370 258, 382 258"/>
+
+            <!-- 右列：存储 -->
+            <text x="530" y="32" class="lbl" style="fill:var(--c7)">块栈 · 存储路径</text>
+            <rect x="530" y="46" width="300" height="44" rx="8" fill="var(--t7)" stroke="var(--c7)"/><text x="680" y="66" class="sm" text-anchor="middle">应用 / shell（fs_read_file…）</text><text x="680" y="82" class="xs t3" text-anchor="middle">lib/fs/include/lib/fs.h</text>
+            <rect x="530" y="112" width="300" height="56" rx="8" fill="var(--t7)" stroke="var(--c7)" stroke-width="1.4"/>
+            <text x="680" y="134" class="sm" text-anchor="middle" style="font-weight:700">VFS（lib/fs/fs.c）</text>
+            <text x="680" y="152" class="xs t2" text-anchor="middle">挂载命名空间 · 路径游走 · vnode 复用</text>
+            <rect x="530" y="184" width="300" height="56" rx="8" fill="var(--t7)" stroke="var(--c7)"/>
+            <text x="680" y="206" class="sm" text-anchor="middle">fs_impl（链接段注册）</text>
+            <text x="680" y="224" class="xs t2" text-anchor="middle">ext2 · fat · spifs · memfs · 9p</text>
+            <rect x="530" y="256" width="300" height="56" rx="8" fill="var(--t7)" stroke="var(--c7)"/>
+            <text x="680" y="278" class="sm" text-anchor="middle">lib/bcache（块缓存，ext2/fat 使用）</text>
+            <text x="680" y="296" class="xs t3" text-anchor="middle">按块缓存 + 引用计数</text>
+            <rect x="530" y="328" width="300" height="56" rx="8" fill="var(--t7)" stroke="var(--c7)" stroke-width="1.4"/>
+            <text x="680" y="350" class="sm" text-anchor="middle" style="font-weight:700">lib/bio — 块设备抽象（bdev_t）</text>
+            <text x="680" y="368" class="xs t2" text-anchor="middle">全局注册表 · 字节/块读写 · 擦除几何</text>
+            <rect x="530" y="400" width="300" height="56" rx="8" fill="var(--t2)" stroke="var(--c2)"/>
+            <text x="680" y="422" class="sm" text-anchor="middle">驱动注册 bdev</text>
+            <text x="680" y="440" class="xs t2" text-anchor="middle">virtio-blk · ahci · ide · 平台 Flash</text>
+            <rect x="530" y="472" width="300" height="44" rx="8" fill="var(--tgray)" stroke="var(--line)"/><text x="680" y="492" class="sm t2" text-anchor="middle">分区：lib/partition（MBR/GPT）</text><text x="680" y="508" class="xs t3" text-anchor="middle">bio_publish_subdevice 切子设备</text>
+            <path d="M680 90 v20" stroke="var(--c7)" stroke-width="1.6" fill="none" marker-end="url(#ah12b)"/>
+            <path d="M680 168 v14" stroke="var(--c7)" stroke-width="1.6" fill="none" marker-end="url(#ah12b)"/>
+            <path d="M680 240 v14" stroke="var(--c7)" stroke-width="1.6" fill="none" marker-end="url(#ah12b)"/>
+            <path d="M680 312 v14" stroke="var(--c7)" stroke-width="1.6" fill="none" marker-end="url(#ah12b)"/>
+            <path d="M680 384 v14" stroke="var(--c7)" stroke-width="1.6" fill="none" marker-end="url(#ah12b)"/>
+            <path d="M680 456 v14" stroke="var(--c7)" stroke-width="1.6" fill="none" marker-end="url(#ah12b)"/>
+            <!-- 底注 -->
+            <text x="30" y="462" class="xs t3">panic 路径绕开全部缓冲：</text>
+            <text x="30" y="478" class="xs t3">platform_pputc 直接轮询写 UART，</text>
+            <text x="30" y="494" class="xs t3">保证崩溃现场仍能输出。</text>
+            <rect x="30" y="516" width="800" height="48" rx="8" fill="var(--tgray)" stroke="var(--line)"/>
+            <text x="430" y="536" class="sm" text-anchor="middle" style="font-weight:650">dev/ 驱动清单：interrupt(GICv2/v3 · PLIC) · uart(pl011 · dwc8250) · bus/pci · block(ahci · ide)</text>
+            <text x="430" y="554" class="xs t2" text-anchor="middle">virtio(block · net · 9p · gpu · rng) · net(e1000 · pcnet · smc91c96) · timer · power/psci · cache/pl310 · gpio · keys · fbcon · usb</text>
+        </svg>
+        <figcaption><b>图 12</b> · 两条 IO 栈。控制台输出可多路镜像（print_callback），输入统一走 cbuf；存储栈从 VFS 一路到具体块设备驱动。</figcaption>
+        </figure>
+
+        <h3>注册一个块设备：四步曲</h3>
+        <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">dev/block/ide/ide.c:332 — 驱动接入 bio 的标准姿势</span><button class="copy">复制</button></div>
+<pre class="code"><code>status_t ide_register_bdev(int port) {
+    ide_dev_t *dev = malloc(sizeof(*dev));
+
+    /* 1. 初始化 bdev_t：块大小/块数/擦除几何 + 装上默认"去块化"钩子
+          （驱动只实现 read_block，字节级 bio_read 由默认钩子借缓冲拼装） */
+    bio_initialize_bdev(&amp;dev->bdev, name, 512, block_count, 0, NULL, 0);
+
+    /* 2. 覆写驱动自己的块级操作 */
+    dev->bdev.read_block  = ide_read_block;
+    dev->bdev.write_block = ide_write_block;
+
+    /* 3. 登记进全局设备表 —— 此后任何模块都能 bio_open("ide0.0") */
+    bio_register_device(&amp;dev->bdev);
+
+    /* 4. 文件系统即可挂载：fs_mount("/boot", "ext2", "ide0.0", ...) */
+}</code></pre></div>
+        <p>bio 层的巧思在 <strong>bio_default_read/write</strong>：未提供字节级接口的驱动自动获得"借一页弹跳缓冲拼装字节请求"的包装，
+        驱动只需实现最自然的 read_block/write_block；子设备（分区）通过 <code>bio_publish_subdevice()</code> 生成仅做偏移转发的 bdev。</p>
+
+        <h3>控制台的三道接入缝</h3>
+        <ul>
+            <li><strong>平台缝</strong>：实现 <code>platform_dputc/dgetc</code>（及 panic 专用 <code>pputc/pgetc</code>），默认输出路径</li>
+            <li><strong>镜像缝</strong>：<code>register_print_callback()</code> 把全部输出复制一份（帧缓冲控制台、USB CDC 串口）</li>
+            <li><strong>输入缝</strong>：UART 驱动的 RX 中断把字符推进 <code>console_input_cbuf</code>（lib/cbuf：pow2 环形缓冲 + event 阻塞读 + 零拷贝 peek）</li>
+        </ul>
+        <p>另有 <code>lib/pool</code> 提供侵入式链表的 O(1) 定长对象池——固定尺寸分配的零碎片答案，多处驱动用它管理请求结构。</p>
+    </section>
+
+    <!-- ================= 11 文件系统 ================= -->
+    <section class="sec" id="fs">
+        <div class="sec-head"><div class="sec-no">11</div><h2>文件系统</h2></div>
+        <p class="sec-lede">lib/fs 是一个小而完整的 VFS：挂载命名空间 + vnode 接口 + 链接段注册。文件系统只实现一张函数表，
+        路径游走、节点缓存、软链接拼接等通用问题都由 VFS 层统一解决。</p>
+
+        <figure class="fig">
+        <svg viewBox="0 0 860 400" role="img" aria-label="VFS 挂载命名空间与 fs_api">
+            <defs>
+                <marker id="ah13" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--c7)"/></marker>
+            </defs>
+            <!-- 挂载树 -->
+            <text x="30" y="32" class="lbl">挂载命名空间（fs_node 树 + fs_mount 表）</text>
+            <rect x="30" y="46" width="380" height="330" rx="10" fill="var(--surface)" stroke="var(--grid)"/>
+            <rect x="60" y="66" width="130" height="40" rx="8" fill="var(--t7)" stroke="var(--c7)" stroke-width="1.4"/>
+            <text x="125" y="84" class="sm mono" text-anchor="middle">/</text>
+            <text x="125" y="99" class="xs t3" text-anchor="middle">fs_root</text>
+
+            <rect x="120" y="140" width="130" height="44" rx="8" fill="var(--tgray)" stroke="var(--line)"/>
+            <text x="185" y="158" class="sm mono" text-anchor="middle">boot/</text>
+            <text x="185" y="175" class="xs t3" text-anchor="middle">脚手架节点</text>
+            <path class="arr" d="M125 106 C 130 122, 150 128, 168 138"/>
+
+            <rect x="120" y="216" width="130" height="44" rx="8" fill="var(--tgray)" stroke="var(--line)"/>
+            <text x="185" y="234" class="sm mono" text-anchor="middle">data/</text>
+            <text x="185" y="251" class="xs t3" text-anchor="middle">脚手架节点</text>
+            <path class="arr" d="M125 106 C 118 168, 140 200, 168 214"/>
+
+            <rect x="120" y="292" width="130" height="44" rx="8" fill="var(--tgray)" stroke="var(--line)"/>
+            <text x="185" y="310" class="sm mono" text-anchor="middle">tmp/</text>
+            <text x="185" y="327" class="xs t3" text-anchor="middle">脚手架节点</text>
+            <path class="arr" d="M125 106 C 110 220, 130 280, 168 290"/>
+
+            <!-- 挂载点 -->
+            <rect x="286" y="132" width="110" height="58" rx="8" fill="var(--t7)" stroke="var(--c7)" stroke-width="1.5"/>
+            <text x="341" y="152" class="sm" text-anchor="middle" style="font-weight:700">ext2</text>
+            <text x="341" y="168" class="xs t2" text-anchor="middle">bdev: ide0.0</text>
+            <text x="341" y="182" class="xs t3" text-anchor="middle">只读</text>
+            <path d="M250 160 h32" stroke="var(--c7)" stroke-width="1.6" fill="none" marker-end="url(#ah13)"/>
+            <rect x="286" y="208" width="110" height="58" rx="8" fill="var(--t7)" stroke="var(--c7)" stroke-width="1.5"/>
+            <text x="341" y="228" class="sm" text-anchor="middle" style="font-weight:700">fat</text>
+            <text x="341" y="244" class="xs t2" text-anchor="middle">bdev: virtio0</text>
+            <text x="341" y="258" class="xs t3" text-anchor="middle">读写 + 可格式化</text>
+            <path d="M250 236 h32" stroke="var(--c7)" stroke-width="1.6" fill="none" marker-end="url(#ah13)"/>
+            <rect x="286" y="284" width="110" height="58" rx="8" fill="var(--t7)" stroke="var(--c7)" stroke-width="1.5"/>
+            <text x="341" y="304" class="sm" text-anchor="middle" style="font-weight:700">memfs</text>
+            <text x="341" y="320" class="xs t2" text-anchor="middle">内存盘</text>
+            <text x="341" y="334" class="xs t3" text-anchor="middle">无设备</text>
+            <path d="M250 312 h32" stroke="var(--c7)" stroke-width="1.6" fill="none" marker-end="url(#ah13)"/>
+
+            <!-- 右侧 fs_api -->
+            <text x="460" y="32" class="lbl">fs_api — 文件系统只需填这张表</text>
+            <rect x="460" y="46" width="370" height="330" rx="10" fill="var(--surface)" stroke="var(--grid)"/>
+            <text x="482" y="74" class="sm" style="font-weight:700;fill:var(--c7)">卷操作</text>
+            <text x="482" y="92" class="xs mono t2">format · mount · unmount · fs_stat</text>
+            <text x="482" y="122" class="sm" style="font-weight:700;fill:var(--c7)">命名空间（单组件相对某目录）</text>
+            <text x="482" y="140" class="xs mono t2">lookup · create · mkdir · unlink</text>
+            <text x="482" y="156" class="xs mono t2">rmdir · rename · readlink · release</text>
+            <text x="482" y="186" class="sm" style="font-weight:700;fill:var(--c7)">文件（直接作用于带偏移的 vnode）</text>
+            <text x="482" y="204" class="xs mono t2">read · write · truncate · stat · ioctl</text>
+            <text x="482" y="234" class="sm" style="font-weight:700;fill:var(--c7)">目录游标</text>
+            <text x="482" y="252" class="xs mono t2">opendir · readdir · closedir</text>
+            <text x="482" y="286" class="xs t3">NULL 成员 ⇒ 自动 ERR_NOT_SUPPORTED</text>
+            <text x="482" y="304" class="xs t3">注册：STATIC_FS_IMPL(name, api) 入</text>
+            <text x="482" y="320" class="xs t3">"fs_impl" 链接段，find_fs() 遍历发现</text>
+            <text x="482" y="346" class="xs t3">无引用节点进 LRU（默认 64，可关）</text>
+            <text x="482" y="362" class="xs t3">软链接：游走时拼接目标，深度限 8</text>
+        </svg>
+        <figcaption><b>图 13</b> · 挂载命名空间与 fs_api 接口。<code>fs_mount("/boot", "ext2", "ide0.0", …)</code> 会 bio_open 设备、调用 ext2 的 mount、把节点挂进树。</figcaption>
+        </figure>
+
+        <h3>在树上的文件系统</h3>
+        <div class="tbl-wrap"><table class="tbl">
+            <tr><th>文件系统</th><th>语言</th><th>特性</th><th>测试</th></tr>
+            <tr><td><code>ext2</code></td><td>C</td><td>只读；经 lib/bcache 缓存块；目录/文件/inode 逻辑分层清晰</td><td>镜像测试</td></tr>
+            <tr><td><code>fat</code></td><td>C++</td><td>FAT12/16/32 读写 + fs_format_device 格式化；持有 bcache；类封装 fat_fs/fat_vnode</td><td>RAM 卷 + 真实镜像（fsck.fat / mtools 校验）双轨</td></tr>
+            <tr><td><code>spifs</code></td><td>C</td><td>NOR 闪存专用：直接用 bio_erase/ioctl(BIO_IOCTL_GET_MAP_ADDR) 做原位执行</td><td>单元测试</td></tr>
+            <tr><td><code>memfs</code></td><td>C</td><td>内存盘，无块设备依赖</td><td>单元测试</td></tr>
+            <tr><td><code>9p</code></td><td>C</td><td>经 virtio-9p 与宿主机共享目录（QEMU 场景）</td><td>引导测试</td></tr>
+        </table></div>
+
+        <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">VFS 使用示例</span><button class="copy">复制</button></div>
+<pre class="code"><code>fs_mount("/boot", "ext2", "ide0.0");       /* 挂载 */
+
+filehandle *fh;
+fs_open_file("/boot/kernel.bin", &amp;fh);     /* 游走：逐组件 api->lookup */
+
+char buf[512];
+ssize_t n = fs_read_file(fh, buf, sizeof(buf), 0);  /* 偏移在 vnode 上 */
+
+fs_close_file(fh);
+fs_unmount("/boot");                        /* 引用归零后延迟拆除 */</code></pre></div>
+    </section>
+
+    <!-- ================= 12 应用与 Shell ================= -->
+    <section class="sec" id="apps">
+        <div class="sec-head"><div class="sec-no">12</div><h2>应用与 Shell</h2></div>
+        <p class="sec-lede">没有可执行文件格式、没有加载器——应用是编译期链接进镜像的代码段，靠链接段自描述、开机自发现。
+        Shell 不是一个"程序"而是一个普通 app，控制台命令同理。</p>
+
+        <h3>两种自描述机制</h3>
+        <div class="grid2">
+            <div>
+                <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">app/include/app.h — 应用注册</span><button class="copy">复制</button></div>
+<pre class="code"><code>static void my_app_init(const struct app_descriptor *app) {
+    /* 开机阶段调用（线程未起） */
+}
+
+static void my_app_entry(const struct app_descriptor *app, void *args) {
+    /* 独立线程中运行 */
+    printf("app %s running\n", app-&gt;name);
+}
+
+APP_START(myapp)
+    .init  = my_app_init,
+    .entry = my_app_entry,
+APP_END(myapp)</code></pre></div>
+                <p style="font-size:13px;color:var(--ink-2)">结构入 <code>"apps"</code> 链接段；<code>apps_init()</code> 先全量调 init，再为每个非 <code>NO_AUTOSTART</code> 的 app 建线程（可用 <code>start &lt;名字&gt;</code> 手动拉起）。app 的线程栈大小也可声明式覆盖。</p>
+            </div>
+            <div>
+                <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">lk/console_cmd.h — 命令注册</span><button class="copy">复制</button></div>
+<pre class="code"><code>static int my_cmd(int argc, const console_cmd_args *argv) {
+    printf("hello from %s\n", argv[0].str);
+    return 0;
+}
+
+STATIC_COMMAND_START
+STATIC_COMMAND("mytest", "我的测试命令", &amp;my_cmd)
+STATIC_COMMAND_END(mytest);</code></pre></div>
+                <p style="font-size:13px;color:var(--ink-2)">入 <code>"console_cmds"</code> 段；lib/console 不在构建时宏展开为空。命令可标 <code>CMD_AVAIL_ALWAYS</code>（panic shell 可用）。参数已按类型解析（i/x/s）。</p>
+            </div>
+        </div>
+
+        <h3>Shell 的启动与自动化</h3>
+        <p><code>shell_entry</code>（app/shell/shell.c:79）创建控制台会话后，先检查内核命令行里的 <code>lk.autorun</code> 变量——
+        若存在则把它的值当脚本执行（空格可用 <code>+</code> 编码，避免引号地狱），然后进入交互循环打印提示符。
+        这是"宿主机脚本驱动目标机"的标准通道：</p>
+        <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">用 lk.autorun 跑完测试后自动关机（CI 的驱动方式）</span><button class="copy">复制</button></div>
+<pre class="code"><code># 空格编码为 '+'（也可直接用引号包裹真实空格）
+scripts/do-qemuarm -6 -A 'lk.autorun=sleep+5;ut+all;poweroff'
+
+# poweroff 让 QEMU 退出 —— run-qemu-boot-tests.py 就是靠它判断一轮结束
+# 脚本上限 511 字节；PC 目标整条命令行上限 256 字节</code></pre></div>
+        <p>命令行本身由 <code>lib/cmdline</code> 解析，平台在早期把引导参数（FDT / multiboot / UEFI）统一成 <code>lk_cmdline</code>。
+        shell 线程栈默认 <code>DEFAULT_STACK_SIZE</code>（UBSAN 下 ×4），可用 <code>SHELL_STACK_SIZE</code> 覆盖。</p>
+    </section>
+
+    <!-- ================= 13 测试体系 ================= -->
+    <section class="sec" id="test">
+        <div class="sec-head"><div class="sec-no">13</div><h2>测试体系</h2></div>
+        <p class="sec-lede">自验证测试内嵌在内核里：<code>lib/unittest</code> 提供断言与自动发现，CI 用 QEMU 起真内核、
+        以 lk.autorun 执行 <code>ut all</code> 并在超时窗口内等 poweroff。每个架构每次提交都会真机启动。</p>
+
+        <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">lib/unittest — 写一个单元测试</span><button class="copy">复制</button></div>
+<pre class="code"><code>#include &lt;lib/unittest.h&gt;
+#include &lt;test/test.h&gt;
+
+static bool port_roundtrip_test(void) {
+    EXPECT_EQ(ok, NO_ERROR, "port_create");
+    EXPECT_EQ(a, b, "数值应相等");
+    ...
+    return true;    /* false = 失败（期望宏已自动计数） */
+}
+
+UNIT_TEST_START(port_roundtrip)
+    UNIT_TEST(port_roundtrip_test)
+UNIT_TEST_END(port_roundtrip, "port")</code></pre></div>
+
+        <ul>
+            <li><strong>发现机制</strong>：测试入链接段，<code>ut</code> 命令按名字或 <code>all</code> 运行；失败计数与断言消息直接打印在控制台</li>
+            <li><strong>存放位置</strong>：紧跟被测代码的 <code>test/</code> 子目录，模块声明 <code>MODULE_OPTIONS := test</code> 只在 <code>WITH_TESTS</code> 时编入</li>
+            <li><strong>内核自带</strong>：kernel/test 覆盖线程、互斥、信号量、事件、端口与时钟不变量；arch/test 覆盖 MMU 与 FPU 上下文切换；堆、bio、cbuf、fs 等各有配套</li>
+            <li><strong>Cortex-M</strong>：M3/M4/M7/M33/M55 在 MPS2/MPS3 板上跑同一套测试；其余 cortex-m 工程仅做编译验证</li>
+        </ul>
+
+        <div class="tbl-wrap"><table class="tbl">
+            <tr><th>入口</th><th>做什么</th></tr>
+            <tr><td><code>ut all</code></td><td>运行全部单元测试（shell 命令）</td></tr>
+            <tr><td><code>scripts/run-qemu-boot-tests.py</code></td><td>每架构构建 + QEMU 启动 + lk.autorun 跑测试 + poweroff，带挂机检测超时（默认 90s，UEFI 120s）；覆盖 arm64 的 4K/16K/64K 页与 riscv sv39 等</td></tr>
+            <tr><td><code>scripts/run-fat-tests.py</code></td><td>FAT 端到端：生成镜像 → 挂盘启动 → 宿主侧 fsck.fat + mtools 双重校验</td></tr>
+            <tr><td><code>scripts/buildall</code></td><td>全部工程 × gcc/clang × LLD/LTO × DEBUG/UBSAN 矩阵；<code>-d</code> 附带模块依赖核查（CI 强制）</td></tr>
+            <tr><td><code>--ubsan</code></td><td>UBSAN 是运行时消毒器——编译后必须启动才有意义，CI 对 QEMU 工程编译+启动+判错</td></tr>
+        </table></div>
+
+        <div class="note info"><span class="ic">ⓘ</span><div><b>测试风格约定</b>：CI 里 <code>ut all</code> 在模拟器上受超时约束，单测必须快——
+        用 join/event 同步代替固定 sleep，迭代次数控制在慢速模拟器上远小于 1 秒。大缓冲放堆上别放栈（shell 线程栈有限，cortex-m 默认仅 1KB）。</div></div>
+    </section>
+
+    <!-- ================= 14 RTOS 评估 ================= -->
+    <section class="sec" id="rtos">
+        <div class="sec-head"><div class="sec-no">14</div><h2>RTOS 适用性评估</h2></div>
+        <p class="sec-lede">回到最初的问题：LK 支持线程吗？能当 RTOS 用吗？——线程支持完整而成熟；
+        作为 RTOS，它具备 RTOS 的"形"，但缺少硬实时所需的几根"骨"。</p>
+
+        <div class="grid2">
+            <div class="note good" style="margin:0"><span class="ic">✓</span><div>
+                <b>结论：适合作为嵌入式 / 软实时平台</b><br>
+                抢占式优先级调度、完整同步原语、SMP、MMU 可选、文件系统与网络一应俱全——
+                作为 bootloader、固件、单板工具型系统（它本来的战场）绰绰有余，也是自研 RTOS 的优质底座。
+            </div></div>
+            <div class="note crit" style="margin:0"><span class="ic">✗</span><div>
+                <b>结论：不适合未改造的硬实时场景</b><br>
+                互斥锁无优先级继承（优先级反转无界）、等待队列 FIFO 唤醒、无截止期调度、无延迟确定性论证——
+                伺服控制、飞行控制这类对最坏延迟有合同约束的场景，不能直接上。
+            </div></div>
+        </div>
+
+        <h3>能力清单（对照典型 RTOS 要求）</h3>
+        <div class="grid2">
+            <div class="card">
+                <h4 style="margin-top:0;color:var(--good-ink)">具备 ✓</h4>
+                <div class="ok-item"><span class="si">✓</span><span><b>抢占式优先级调度</b>：32 级、位图 O(1) 选线程、高优先级即刻抢占（kernel/thread.c:436）</span></div>
+                <div class="ok-item"><span class="si">✓</span><span><b>实时线程标志</b>：优先级&gt;16 且 REAL_TIME 者免时间片，直到阻塞（thread.c:238, 716）</span></div>
+                <div class="ok-item"><span class="si">✓</span><span><b>全套睡眠式同步</b>：mutex/semaphore/event/port/wait queue，均带超时</span></div>
+                <div class="ok-item"><span class="si">✓</span><span><b>定时器</b>：per-CPU 有序队列 + one-shot 重编程，空闲零中断</span></div>
+                <div class="ok-item"><span class="si">✓</span><span><b>SMP</b>：核间调度 IPI、同步执行原语、CPU 亲和（多数小型 RTOS 无此能力）</span></div>
+                <div class="ok-item"><span class="si">✓</span><span><b>监督模式单体</b>：形态与传统 RTOS 一致，无用户态切换开销</span></div>
+                <div class="ok-item"><span class="si">✓</span><span><b>小足迹</b>：LK_EMBEDDED 目标可运行于 &lt;1MB RAM；三档堆实现可选</span></div>
+                <div class="ok-item"><span class="si">✓</span><span><b>MMU 可选</b>：no-MMU 与分页两形态同源（novm/PMM 同构接口）</span></div>
+            </div>
+            <div class="card">
+                <h4 style="margin-top:0;color:var(--crit-ink)">欠缺 ✗</h4>
+                <div class="no-item"><span class="si">✗</span><span><b>互斥锁无优先级继承</b>：kernel/mutex.c 仅 count + holder，持锁者优先级不变——<strong>优先级反转窗口无上界</strong>（文档宣称的"经等待队列的优先级继承"在代码中不存在）</span></div>
+                <div class="no-item"><span class="si">✗</span><span><b>等待队列 FIFO</b>：入队 list_add_tail、wake_one 取队头（thread.c:1134, 1180）——高优先级等待者可能排在低优先级之后被唤醒</span></div>
+                <div class="no-item"><span class="si">✗</span><span><b>无截止期调度</b>：没有 EDF / 速率单调 / 优先级天花板，无准入控制</span></div>
+                <div class="no-item"><span class="si">✗</span><span><b>无确定性工程</b>：无中断延迟测量、无 WCET 分析、SMP 下全局 thread_lock（关中断）引入抖动</span></div>
+                <div class="no-item"><span class="si">✗</span><span><b>时间片硬编码</b>：quantum=5 tick 写死（源码注释 "XXX make this smarter"）</span></div>
+                <div class="no-item"><span class="si">✗</span><span><b>无功能安全认证路线</b>：无 IEC 61508 / DO-178 类材料</span></div>
+            </div>
+        </div>
+
+        <h3>与主流 RTOS 定性对比</h3>
+        <div class="tbl-wrap"><table class="tbl">
+            <tr><th>维度</th><th>LK</th><th>FreeRTOS</th><th>Zephyr</th></tr>
+            <tr><td>形态</td><td>监督模式单体内核 + 系统库</td><td>极小调度内核 + 可选组件</td><td>可配置内核（可带用户态隔离）</td></tr>
+            <tr><td>调度</td><td>32 级固定优先级抢占 + 同级轮转 + 实时标志</td><td>优先级抢占，同级轮转可选</td><td>抢占/协作/可选 EDF、元优先级</td></tr>
+            <tr><td><strong>优先级继承</strong></td><td><span style="color:var(--crit-ink);font-weight:700">✗ 无</span></td><td>✓（互斥量内置）</td><td>✓</td></tr>
+            <tr><td>SMP</td><td>✓ 全局就绪队列</td><td>✓（近年版本）</td><td>✓</td></tr>
+            <tr><td>MMU 虚拟内存</td><td>✓ 完整 VMM（也可 no-MMU）</td><td>✗（仅 MPU 建议）</td><td>✓ 用户态 + MMU/MPU</td></tr>
+            <tr><td>文件系统</td><td>✓ VFS + ext2/fat/spifs/memfs/9p</td><td>✗（外挂 FatFS 等）</td><td>✓（FATFS/LittleFS 等）</td></tr>
+            <tr><td>网络</td><td>minip（小型 TCP/IP）</td><td>✗（外挂）</td><td>✓ 完整栈</td></tr>
+            <tr><td>应用加载</td><td>✗ 静态链接进镜像</td><td>✗</td><td>✓（可加载/用户态）</td></tr>
+            <tr><td>安全认证</td><td>✗</td><td>姊妹版 SafeRTOS 有</td><td>有功能安全路线</td></tr>
+        </table></div>
+        <p style="font-size:13px;color:var(--muted)">对比为定性归纳，供选型方向参考；各项目版本演进较快，细节以官方文档为准。</p>
+
+        <h3>若要走向硬实时：改造路线</h3>
+        <div class="grid2">
+            <div class="mini">
+                <h5><span class="dot" style="background:var(--c1)"></span>第一步：有序等待</h5>
+                <p>wait queue 改为按优先级有序插入，wake_one 唤醒最高优先级等待者。改动集中在 kernel/thread.c 的阻塞/唤醒路径。</p>
+            </div>
+            <div class="mini">
+                <h5><span class="dot" style="background:var(--c1)"></span>第二步：优先级继承</h5>
+                <p>mutex 获取失败时提升 holder 优先级（含传递链），释放时还原。有了有序等待队列后实现是教科书式的。</p>
+            </div>
+            <div class="mini">
+                <h5><span class="dot" style="background:var(--c7)"></span>第三步：锁粒度</h5>
+                <p>全局 thread_lock 拆 per-CPU 就绪队列 + 部分负载迁移，消除 SMP 关中断大锁的长尾抖动。</p>
+            </div>
+            <div class="mini">
+                <h5><span class="dot" style="background:var(--c7)"></span>第四步：确定性度量</h5>
+                <p>加中断延迟/调度延迟探针与最坏路径统计（evlog 已有雏形），用数据而非直觉回答"有多实时"。</p>
+            </div>
+        </div>
+        <div class="note info"><span class="ic">ⓘ</span><div><b>定位建议</b>：把 LK 当作"小型嵌入式操作系统内核"（它自我定位即如此——Android bootloader 与 Google GBL 的基座），
+        而非 FreeRTOS 的替代品。需要硬实时又喜欢 LK 的代码风格时，前两步改造（有序等待 + 优先级继承）成本低、收益立竿见影。</div></div>
+    </section>
+
+    <!-- ================= 15 总结 ================= -->
+    <section class="sec" id="summary">
+        <div class="sec-head"><div class="sec-no">15</div><h2>总结与速查</h2></div>
+        <p class="sec-lede">一句话：LK 是一个<strong>工程品质很高的小型嵌入式 OS 内核</strong>——架构清晰、注释诚实、测试齐全、可移植性出色；
+        线程子系统完整成熟；缺的是硬实时所需的优先级继承与确定性保障。它是优秀的固件内核与 RTOS 二次开发底座。</p>
+
+        <h3>关键文件地图</h3>
+        <div class="tbl-wrap"><table class="tbl">
+            <tr><th>文件</th><th>职责</th></tr>
+            <tr><td><code>top/main.c</code></td><td>lk_main：引导交接与 init 阶梯调度（1.7K 行的顶层）</td></tr>
+            <tr><td><code>kernel/thread.c</code></td><td>线程、调度器、wait queue（内核的心脏，约 1.3K 行）</td></tr>
+            <tr><td><code>kernel/{mutex,semaphore,event,port}.c</code></td><td>四大同步原语（各 100–700 行，皆可通读）</td></tr>
+            <tr><td><code>kernel/timer.c · kernel/mp.c</code></td><td>定时器队列；SMP 状态与 IPI 服务</td></tr>
+            <tr><td><code>kernel/vm/{pmm,vmm,vm,bootalloc}.c · kernel/novm/</code></td><td>物理/虚拟内存双形态</td></tr>
+            <tr><td><code>lib/heap/</code></td><td>malloc 门面 + miniheap/cmpctmalloc 实现（dlmalloc 在 external/）</td></tr>
+            <tr><td><code>lib/fs/ · lib/bio/ · lib/bcache/</code></td><td>VFS / 块设备抽象 / 块缓存</td></tr>
+            <tr><td><code>lib/console/ · app/shell/</code></td><td>命令循环与交互 shell（autorun 支持）</td></tr>
+            <tr><td><code>lib/unittest/</code></td><td>单元测试框架（断言 + 自动发现）</td></tr>
+            <tr><td><code>arch/arm64/{start.S,exceptions.S,asm.S,mp.c}</code></td><td>arm64 启动、异常入口、上下文切换、IPI 的参考实现</td></tr>
+            <tr><td><code>engine.mk · make/module.mk · project/*.mk</code></td><td>构建引擎与四层配置体系</td></tr>
+        </table></div>
+
+        <h3>五分钟上手命令</h3>
+        <div class="codewrap"><div class="codebar"><span class="dots"><i></i><i></i><i></i></span><span class="fname">从零到 shell</span><button class="copy">复制</button></div>
+<pre class="code"><code>git clone https://github.com/littlekernel/lk &amp;&amp; cd lk
+make qemu-virt-arm64-test          # 构建（需要 aarch64 交叉工具链）
+scripts/do-qemuarm -6              # 启动，回车后输入 help
+ut all                             # 跑全部单元测试
+threads                            # 看线程/调度统计
+poweroff                           # 退出 QEMU（DEBUG&gt;1 时可用）</code></pre></div>
+
+        <h3>推荐阅读顺序</h3>
+        <ol>
+            <li><code>top/main.c</code>（81 行的主线）→ <code>top/init.c</code>（钩子机制）—— 建立"启动即装配"的心智模型</li>
+            <li><code>kernel/thread.c</code> 通读——调度、阻塞、唤醒全在一处</li>
+            <li><code>kernel/mutex.c</code> + wait queue 部分——体会"原语皆建于等待队列"的设计</li>
+            <li><code>lib/heap/miniheap/miniheap.c</code>——300 行看懂一个完整分配器</li>
+            <li><code>arch/arm64/start.S</code>——从复位到 C 的每一步都有注释</li>
+            <li><code>lib/fs/fs.c</code> 的 fs_walk / mount——VFS 的通用问题解法</li>
+        </ol>
+
+        <div class="footer">
+            <strong>关于本文档</strong><br>
+            基于 LK 仓库 master 分支（commit 9bd0b453，2026-10-11）的静态源码分析生成；文中行号与代码摘录以该版本为准。<br>
+            统计口径：自研代码 = arch/platform/lib/dev/app/target/top/kernel 目录下 .c/.h/.S/.cpp/.cc 行数（189,876 行）；external/ 为引入的第三方代码（约 162 万行，主要为厂商 SDK），未计入自研规模。<br>
+            配色与图表遵循无障碍数据可视化规范（明暗双主题均通过 CVD/对比度校验）。文档为单文件离线可用，直接以浏览器打开即可。
+        </div>
+    </section>
+
+    </div>
+</div>
+
+<div class="tooltip" id="tooltip" role="status" aria-live="polite"></div>
+
+<!-- 共享箭头标记（供各图 CSS 类引用） -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+        <marker id="ah1" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--c1)"/></marker>
+        <marker id="ah8" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="var(--c8)"/></marker>
+    </defs>
+</svg>
+
+<script>
+"use strict";
+/* ============ 工具 ============ */
+const $  = (s, el) => (el || document).querySelector(s);
+const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/* ============ 明暗主题 ============ */
+(function () {
+    const btn = $("#themeBtn");
+    const apply = t => {
+        if (t === "dark") document.documentElement.setAttribute("data-theme", "dark");
+        else if (t === "light") document.documentElement.setAttribute("data-theme", "light");
+        else document.documentElement.removeAttribute("data-theme");
+    };
+    let saved = null;
+    try { saved = localStorage.getItem("lk-theme"); } catch (e) {}
+    if (saved) apply(saved);
+    btn.addEventListener("click", () => {
+        const dark = document.documentElement.getAttribute("data-theme") === "dark" ||
+            (!document.documentElement.hasAttribute("data-theme") &&
+             matchMedia("(prefers-color-scheme: dark)").matches);
+        const next = dark ? "light" : "dark";
+        apply(next);
+        try { localStorage.setItem("lk-theme", next); } catch (e) {}
+    });
+})();
+
+/* ============ 侧边栏：过滤 / 移动端 ============ */
+(function () {
+    const input = $("#navFilter");
+    const links = $$("#nav a");
+    input.addEventListener("input", () => {
+        const q = input.value.trim().toLowerCase();
+        links.forEach(a => a.classList.toggle("hidden-by-search",
+            q && !a.textContent.toLowerCase().includes(q)));
+    });
+    const sidebar = $("#sidebar"), overlay = $("#overlay"), menuBtn = $("#menuBtn");
+    const close = () => { sidebar.classList.remove("open"); overlay.style.display = "none"; };
+    menuBtn.addEventListener("click", () => {
+        const open = sidebar.classList.toggle("open");
+        overlay.style.display = open ? "block" : "none";
+    });
+    overlay.addEventListener("click", close);
+    links.forEach(a => a.addEventListener("click", close));
+})();
+
+/* ============ 滚动定位（scrollspy） ============ */
+(function () {
+    const links = $$("#nav a");
+    const byId = {};
+    links.forEach(a => byId[a.getAttribute("href").slice(1)] = a);
+    const secs = $$("section.sec");
+    const crumb = $("#crumb");
+    const io = new IntersectionObserver(entries => {
+        entries.forEach(en => {
+            if (!en.isIntersecting) return;
+            links.forEach(a => a.classList.remove("active"));
+            const a = byId[en.target.id];
+            if (a) a.classList.add("active");
+            const h = en.target.querySelector("h2");
+            crumb.innerHTML = "<b>LK 内核分析</b> / " + esc(h ? h.textContent : "");
+        });
+    }, { rootMargin: "-15% 0px -70% 0px", threshold: 0 });
+    secs.forEach(s => io.observe(s));
+})();
+
+/* ============ 复制按钮 ============ */
+$$(".codewrap").forEach(wrap => {
+    const btn = wrap.querySelector(".copy");
+    const code = wrap.querySelector("pre.code");
+    if (!btn || !code) return;
+    btn.addEventListener("click", async () => {
+        const text = code.textContent;
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (e) {
+            const ta = document.createElement("textarea");
+            ta.value = text; document.body.appendChild(ta);
+            ta.select(); document.execCommand("copy"); ta.remove();
+        }
+        btn.textContent = "已复制 ✓";
+        setTimeout(() => btn.textContent = "复制", 1600);
+    });
+});
+
+/* ============ 轻量 C 语法着色 ============ */
+(function () {
+    const KW = "unsigned|signed|void|char|short|int|long|float|double|struct|union|enum|static|const|volatile|extern|register|typedef|if|else|for|while|do|switch|case|default|break|continue|return|goto|sizeof|inline|asm|bool|true|false|NULL";
+    const TY = "status_t|thread_t|timer_t|mutex_t|event_t|sem_t|port_t|wait_queue_t|spin_lock_t|lk_time_t|uint\\d+_t|int\\d+_t|u\\d+|s\\d+|size_t|ssize_t|uintptr_t|paddr_t|vaddr_t|bdev_t|bnum_t|vmm_aspace_t|vm_page_t|pmm_arena_t|console_cmd_args|app_descriptor|filehandle|dirhandle|fs_api|handler_return|list_node|port_packet_t|enum|FILE";
+    const reC = new RegExp(
+        "(\\/\\*[\\s\\S]*?\\*\\/|\\/\\/[^\\n]*)" +
+        "|(\"(?:[^\"\\\\\\n]|\\\\.)*\")" +
+        "|(^[ \\t]*#[ \\t]*[a-zA-Z]+[^\\n]*)" +
+        "|\\b(" + KW + ")\\b" +
+        "|\\b(" + TY + ")\\b" +
+        "|\\b(0x[0-9a-fA-F]+|\\d+)\\b", "gm");
+    const reSh = /(^[ \t]*#[^\n]*)|("[^"\n]*")/gm;
+
+    $$("pre.code").forEach(pre => {
+        const lang = pre.getAttribute("data-lang") || "c";
+        const src = pre.textContent;
+        pre.innerHTML = "<code>" + esc(src).replace(lang === "c" ? reC : reSh,
+            (m, cm, st, pp, kw, ty, nm) => {
+                if (cm !== undefined) return '<span class="tk-cm">' + m + "</span>";
+                if (st !== undefined) return '<span class="tk-st">' + m + "</span>";
+                if (pp !== undefined) return '<span class="tk-pp">' + m + "</span>";
+                if (kw !== undefined) return '<span class="tk-kw">' + m + "</span>";
+                if (ty !== undefined) return '<span class="tk-ty">' + m + "</span>";
+                if (nm !== undefined) return '<span class="tk-nm">' + m + "</span>";
+                return m;
+            }) + "</code>";
+    });
+})();
+
+/* ============ 图表（遵循无障碍数据可视化规范）============ */
+(function () {
+    const tooltip = $("#tooltip");
+    const showTip = (target, html) => {
+        const move = ev => {
+            tooltip.innerHTML = html;
+            tooltip.classList.add("show");
+            const pad = 14;
+            let x = ev.clientX + pad, y = ev.clientY - 30;
+            const r = tooltip.getBoundingClientRect();
+            if (x + r.width > innerWidth - 8)  x = ev.clientX - r.width - pad;
+            if (y < 8) y = ev.clientY + pad;
+            tooltip.style.left = x + "px";
+            tooltip.style.top  = y + "px";
+        };
+        target.addEventListener("mousemove", move);
+        target.addEventListener("mouseleave", () => {
+            tooltip.classList.remove("show");
+            target.removeEventListener("mousemove", move);
+        }, { once: true });
+    };
+
+    const fmtK = v => v >= 1000 ? (v / 1000).toFixed(1).replace(/\.0$/, "") + "K" : "" + v;
+    const fmtFull = v => v.toLocaleString("en-US");
+
+    function barChart(host, data, opt) {
+        const W = 800, rowH = 34, barH = 18, labelW = 96, valW = 74;
+        const plotW = W - labelW - valW - 20;
+        const H = data.length * rowH + 34 /*x轴*/ + 6;
+        const max = Math.max(...data.map(d => d[1]));
+        const ticks = opt.ticks;
+        const x = v => labelW + v / ticks[ticks.length - 1] * plotW;
+        const ns = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(ns, "svg");
+        svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+
+        const mk = (tag, attrs, parent) => {
+            const el = document.createElementNS(ns, tag);
+            for (const k in attrs) el.setAttribute(k, attrs[k]);
+            (parent || svg).appendChild(el);
+            return el;
+        };
+
+        /* 网格与刻度（hairline，退后） */
+        ticks.forEach(t => {
+            mk("line", { x1: x(t), y1: 6, x2: x(t), y2: data.length * rowH + 6, class: "gridln" });
+            const tx = mk("text", { x: x(t), y: H - 10, "text-anchor": "middle",
+                fill: "var(--muted)", "font-size": 11, style: "font-variant-numeric:tabular-nums" });
+            tx.textContent = fmtK(t);
+        });
+        mk("line", { x1: labelW, y1: 6, x2: labelW, y2: data.length * rowH + 6, class: "axis" });
+
+        data.forEach((d, i) => {
+            const y = i * rowH + 6;
+            const row = mk("g", { class: "row" });
+            const lab = mk("text", { x: labelW - 10, y: y + barH / 2 + 4, "text-anchor": "end",
+                fill: "var(--ink-2)", "font-size": 12.5, class: "mono", style: "font-family:ui-monospace,Menlo,Consolas,monospace" }, row);
+            lab.textContent = d[0];
+            const w = Math.max(d[1] / ticks[ticks.length - 1] * plotW, 1.2);
+            /* 数据端 4px 圆角、基线端方角 */
+            mk("rect", { x: labelW + 1, y: y, width: Math.max(w - 4, 1), height: barH, rx: 3.5,
+                fill: "var(--" + opt.colorVar + ")", class: "barr" }, row);
+            /* 命中层（比标记更大的热区） */
+            const hit = mk("rect", { x: 0, y: y - 6, width: W, height: barH + 12, fill: "transparent" }, row);
+            const val = mk("text", { x: labelW + w + 8, y: y + barH / 2 + 4,
+                fill: "var(--ink-2)", "font-size": 12, style: "font-variant-numeric:tabular-nums" }, row);
+            val.textContent = opt.fmt(d[1]);
+            hit.addEventListener("mouseenter", ev => {
+                showTip(hit, "<b>" + esc(d[0]) + "</b> · " + fmtFull(d[1]) + " " + opt.unit);
+            });
+        });
+        host.appendChild(svg);
+
+        /* 数据表（替代视图） */
+        const tbl = document.createElement("div");
+        tbl.className = "chart-tbl";
+        tbl.innerHTML = '<div class="tbl-wrap"><table class="tbl"><tr><th>' + opt.cat +
+            '</th><th class="num">' + opt.unit + '</th></tr>' +
+            data.map(d => "<tr><td><code>" + d[0] + "</code></td><td class=\"num\">" + fmtFull(d[1]) + "</td></tr>").join("") +
+            "</table></div>";
+        host.appendChild(tbl);
+        const btn = document.createElement("button");
+        btn.className = "chart-tbl-toggle";
+        btn.textContent = "▾ 显示数据表";
+        btn.addEventListener("click", () => {
+            const on = tbl.classList.toggle("show");
+            btn.textContent = on ? "▴ 收起数据表" : "▾ 显示数据表";
+        });
+        host.appendChild(btn);
+    }
+
+    /* 图 1：代码规模 */
+    barChart($("#chartLoc"), [
+        ["lib", 70948], ["platform", 40006], ["arch", 30177], ["dev", 23065],
+        ["kernel", 9070], ["app", 8005], ["target", 6870], ["top", 1730],
+    ], { colorVar: "c1", unit: "行", cat: "目录", ticks: [0, 20000, 40000, 60000, 80000], fmt: fmtK });
+
+    /* 图 2：模块数量 */
+    barChart($("#chartMod"), [
+        ["lib", 86], ["target", 51], ["platform", 40], ["dev", 30],
+        ["external", 29], ["app", 18], ["arch", 11], ["kernel", 4], ["top", 1],
+    ], { colorVar: "c2", unit: "个", cat: "目录", ticks: [0, 20, 40, 60, 80, 90], fmt: v => "" + v });
+})();
+</script>
+</body>
+</html>
