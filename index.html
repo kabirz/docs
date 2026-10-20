@@ -5,18 +5,223 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Docs</title>
 <style>
-  body { font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; max-width: 640px; margin: 4rem auto; padding: 0 1rem; line-height: 1.6; }
-  h1 { font-size: 1.5rem; }
-  ul { padding-left: 1.2rem; }
-  a { color: #0969da; text-decoration: none; }
-  a:hover { text-decoration: underline; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #eef0f3;
+    color: #1f2328;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  .layout { display: flex; min-height: 100vh; }
+  nav.sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    background: #ffffff;
+    border-right: 1px solid #d8dce1;
+    padding: 1.5rem 0.75rem;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+  }
+  nav.sidebar h1 {
+    font-size: 1.25rem;
+    padding: 0 0.75rem 1rem;
+    border-bottom: 1px solid #e4e7eb;
+    margin-bottom: 1rem;
+  }
+  nav.sidebar a {
+    display: block;
+    padding: 0.45rem 0.75rem;
+    border-radius: 6px;
+    color: #444c56;
+    text-decoration: none;
+    font-size: 0.95rem;
+    margin-bottom: 2px;
+  }
+  nav.sidebar a:hover { background: #f0f2f5; color: #1f2328; }
+  nav.sidebar a.active { background: #0969da; color: #ffffff; }
+  main { flex: 1; padding: 2rem 2.5rem; max-width: 980px; }
+  section { display: none; }
+  section.show { display: block; animation: fadein 0.2s ease; }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  h2 {
+    font-size: 1.15rem;
+    color: #57606a;
+    margin: 0 0 1rem;
+    font-weight: 600;
+  }
+  .card {
+    display: block;
+    background: #ffffff;
+    border: 1px solid #d8dce1;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.75rem;
+    text-decoration: none;
+    color: inherit;
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+  }
+  .card:hover {
+    box-shadow: 0 2px 10px rgba(31, 35, 40, 0.1);
+    transform: translateY(-1px);
+  }
+  .card .title { font-size: 1.05rem; font-weight: 600; color: #0969da; }
+  .card .desc { font-size: 0.9rem; color: #57606a; margin-top: 0.25rem; }
+  @media (max-width: 720px) {
+    .layout { flex-direction: column; }
+    nav.sidebar {
+      width: 100%;
+      height: auto;
+      position: static;
+      border-right: none;
+      border-bottom: 1px solid #d8dce1;
+      padding: 1rem;
+    }
+    nav.sidebar a { display: inline-block; margin-right: 4px; }
+    main { padding: 1.25rem; }
+  }
 </style>
 </head>
 <body>
-  <h1>Docs</h1>
-  <ul>
-    <li><a href="lk-kernel-analysis.html">Linux Kernel 分析</a></li>
-    <li><a href="uboot-features.html">U-Boot 特性</a></li>
-  </ul>
+<div class="layout">
+  <nav class="sidebar">
+    <h1>Docs</h1>
+    <a href="#all" class="active" data-tab="all">全部文档</a>
+    <a href="#embedded" data-tab="embedded">嵌入式与系统</a>
+    <a href="#languages" data-tab="languages">编程语言</a>
+    <a href="#ai" data-tab="ai">AI 与计算机视觉</a>
+  </nav>
+  <main>
+    <section id="all" class="show">
+      <h2>全部文档(12 篇)</h2>
+      <a class="card" href="lk-kernel-analysis.html">
+        <div class="title">LK (Little Kernel) 内核源码分析</div>
+        <div class="desc">Android 引导链中的轻量内核,任务调度与平台初始化源码剖析</div>
+      </a>
+      <a class="card" href="uboot-features.html">
+        <div class="title">U-Boot 2026.10 功能全解析</div>
+        <div class="desc">Boot 流程、驱动模型、命令体系与移植要点</div>
+      </a>
+      <a class="card" href="fastboot-deep-dive.html">
+        <div class="title">FASTBOOT 深度解析 — Android 刷机与引导协议权威指南</div>
+        <div class="desc">协议流程、分区镜像与刷机机制深度剖析</div>
+      </a>
+      <a class="card" href="FreeRTOS源码详解.html">
+        <div class="title">FreeRTOS 源码详解:基于 V11.3.2 的内核深度剖析</div>
+        <div class="desc">任务、队列、调度器与内存管理的内核实现</div>
+      </a>
+      <a class="card" href="现代C语言教程.html">
+        <div class="title">现代 C 语言教程</div>
+        <div class="desc">Modern C Tutorial — 从语法基础到现代工程实践</div>
+      </a>
+      <a class="card" href="现代C++完全学习教程.html">
+        <div class="title">现代 C++ 完全学习教程</div>
+        <div class="desc">C++11/14/17/20 特性体系与工程化用法</div>
+      </a>
+      <a class="card" href="现代Rust语言教程.html">
+        <div class="title">现代 Rust 语言教程</div>
+        <div class="desc">所有权、生命周期与安全并发编程</div>
+      </a>
+      <a class="card" href="C%23程序编写详解.html">
+        <div class="title">C# 程序编写详解</div>
+        <div class="desc">从语法基础到工程实践的完整指南</div>
+      </a>
+      <a class="card" href="OpenCV_Cpp_Tutorial.html">
+        <div class="title">OpenCV 计算机视觉教程(C++ 版)</div>
+        <div class="desc">图像处理、特征与几何视觉的 C++ 实践</div>
+      </a>
+      <a class="card" href="OpenCV_Python_Tutorial.html">
+        <div class="title">OpenCV 计算机视觉教程(Python 版)</div>
+        <div class="desc">图像处理、特征与几何视觉的 Python 实践</div>
+      </a>
+      <a class="card" href="YOLO全版本详解.html">
+        <div class="title">YOLO 全版本详解:从 YOLOv1 到 YOLOv12</div>
+        <div class="desc">目标检测各代架构演进与核心改进</div>
+      </a>
+      <a class="card" href="Transformer图解详解.html">
+        <div class="title">图解 Transformer:从注意力机制到大语言模型</div>
+        <div class="desc">注意力原理、架构拆解与可视化理解</div>
+      </a>
+    </section>
+    <section id="embedded">
+      <h2>嵌入式与系统(4 篇)</h2>
+      <a class="card" href="lk-kernel-analysis.html">
+        <div class="title">LK (Little Kernel) 内核源码分析</div>
+        <div class="desc">Android 引导链中的轻量内核,任务调度与平台初始化源码剖析</div>
+      </a>
+      <a class="card" href="uboot-features.html">
+        <div class="title">U-Boot 2026.10 功能全解析</div>
+        <div class="desc">Boot 流程、驱动模型、命令体系与移植要点</div>
+      </a>
+      <a class="card" href="fastboot-deep-dive.html">
+        <div class="title">FASTBOOT 深度解析 — Android 刷机与引导协议权威指南</div>
+        <div class="desc">协议流程、分区镜像与刷机机制深度剖析</div>
+      </a>
+      <a class="card" href="FreeRTOS源码详解.html">
+        <div class="title">FreeRTOS 源码详解:基于 V11.3.2 的内核深度剖析</div>
+        <div class="desc">任务、队列、调度器与内存管理的内核实现</div>
+      </a>
+    </section>
+    <section id="languages">
+      <h2>编程语言(4 篇)</h2>
+      <a class="card" href="现代C语言教程.html">
+        <div class="title">现代 C 语言教程</div>
+        <div class="desc">Modern C Tutorial — 从语法基础到现代工程实践</div>
+      </a>
+      <a class="card" href="现代C++完全学习教程.html">
+        <div class="title">现代 C++ 完全学习教程</div>
+        <div class="desc">C++11/14/17/20 特性体系与工程化用法</div>
+      </a>
+      <a class="card" href="现代Rust语言教程.html">
+        <div class="title">现代 Rust 语言教程</div>
+        <div class="desc">所有权、生命周期与安全并发编程</div>
+      </a>
+      <a class="card" href="C%23程序编写详解.html">
+        <div class="title">C# 程序编写详解</div>
+        <div class="desc">从语法基础到工程实践的完整指南</div>
+      </a>
+    </section>
+    <section id="ai">
+      <h2>AI 与计算机视觉(4 篇)</h2>
+      <a class="card" href="OpenCV_Cpp_Tutorial.html">
+        <div class="title">OpenCV 计算机视觉教程(C++ 版)</div>
+        <div class="desc">图像处理、特征与几何视觉的 C++ 实践</div>
+      </a>
+      <a class="card" href="OpenCV_Python_Tutorial.html">
+        <div class="title">OpenCV 计算机视觉教程(Python 版)</div>
+        <div class="desc">图像处理、特征与几何视觉的 Python 实践</div>
+      </a>
+      <a class="card" href="YOLO全版本详解.html">
+        <div class="title">YOLO 全版本详解:从 YOLOv1 到 YOLOv12</div>
+        <div class="desc">目标检测各代架构演进与核心改进</div>
+      </a>
+      <a class="card" href="Transformer图解详解.html">
+        <div class="title">图解 Transformer:从注意力机制到大语言模型</div>
+        <div class="desc">注意力原理、架构拆解与可视化理解</div>
+      </a>
+    </section>
+  </main>
+</div>
+<script>
+  var tabs = document.querySelectorAll('nav.sidebar a[data-tab]');
+  var sections = document.querySelectorAll('main section');
+  function activate(tab) {
+    tabs.forEach(function (a) { a.classList.toggle('active', a.dataset.tab === tab); });
+    sections.forEach(function (s) { s.classList.toggle('show', s.id === tab); });
+  }
+  tabs.forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      activate(a.dataset.tab);
+      history.replaceState(null, '', '#' + a.dataset.tab);
+    });
+  });
+  if (location.hash) {
+    var tab = location.hash.slice(1);
+    if (document.getElementById(tab)) activate(tab);
+  }
+</script>
 </body>
 </html>
