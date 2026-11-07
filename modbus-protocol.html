@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Modbus 协议详解（技术手册）</title>
+<style>
+  :root{
+    --pg: #f4f6fa;
+    --card:#ffffff;
+    --ink:#1a2333;
+    --muted:#5b6b7f;
+    --line:#dfe5ee;
+    --accent:#2f6fed;
+    --accent-soft:#eef4ff;
+    --brand:#e8590c;
+    --green:#0a7a3d;
+    --red:#c62828;
+    --code-bg:#0f172a;
+    --code-ink:#e2e8f0;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  body{
+    margin:0;background:var(--pg);color:var(--ink);
+    font-family:"Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;
+    line-height:1.7;font-size:15px;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 22px 80px;}
+
+  /* ===== Header ===== */
+  .hero{
+    background:linear-gradient(135deg,#1e3a8a 0%,#2f6fed 60%,#38bdf8 100%);
+    color:#fff;border-radius:16px;padding:40px 38px;margin-bottom:30px;
+    box-shadow:0 8px 30px rgba(30,58,138,.25);position:relative;overflow:hidden;
+  }
+  .hero::after{content:"";position:absolute;right:-40px;top:-40px;width:240px;height:240px;
+    background:rgba(255,255,255,.08);border-radius:50%;}
+  .hero h1{margin:0 0 8px;font-size:30px;letter-spacing:.5px;}
+  .hero .sub{font-size:15px;opacity:.9;max-width:760px;}
+  .hero .tags{margin-top:18px;display:flex;flex-wrap:wrap;gap:8px;}
+  .hero .tag{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);
+    padding:3px 12px;border-radius:20px;font-size:12.5px;}
+
+  /* ===== Sections ===== */
+  section{background:var(--card);border-radius:14px;padding:28px 30px;margin-bottom:26px;
+    box-shadow:0 2px 12px rgba(20,40,80,.06);border:1px solid var(--line);}
+  h2{font-size:22px;margin:0 0 4px;color:#17233f;display:flex;align-items:center;gap:10px;}
+  h2 .num{background:var(--accent);color:#fff;width:30px;height:30px;border-radius:8px;
+    display:inline-flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+  .section-intro{color:var(--muted);font-size:14px;margin:6px 0 18px;}
+  h3{font-size:17px;margin:24px 0 12px;color:#1f2d4d;border-left:4px solid var(--accent);
+    padding-left:10px;}
+  p{margin:10px 0;}
+  code{background:var(--accent-soft);color:#2147a8;padding:1px 7px;border-radius:5px;
+    font-family:Consolas,"Courier New",monospace;font-size:13px;}
+  .mono{font-family:Consolas,"Courier New",monospace;}
+  .hex{font-family:Consolas,monospace;letter-spacing:.5px;}
+
+  /* ===== Tables ===== */
+  .tbl-wrap{overflow-x:auto;margin:14px 0;}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:560px;}
+  thead th{background:var(--accent);color:#fff;font-weight:600;text-align:left;
+    padding:9px 12px;border:1px solid #1f5bd1;white-space:nowrap;}
+  tbody td{padding:8px 12px;border:1px solid var(--line);vertical-align:top;}
+  tbody tr:nth-child(even){background:#f7f9fd;}
+  tbody tr:hover{background:#eef4ff;}
+  td.c,th.c{text-align:center;}
+  .badge{display:inline-block;padding:1px 8px;border-radius:12px;font-size:12px;font-weight:600;}
+  .b-blue{background:#e0ecff;color:#1f5bd1;}
+  .b-green{background:#dcf5e8;color:#0a7a3d;}
+  .b-red{background:#ffe0e0;color:#c62828;}
+  .b-amber{background:#fff3d6;color:#9a6b00;}
+  .b-gray{background:#eceff3;color:#5b6b7f;}
+
+  /* ===== Callout ===== */
+  .note{background:#fff8e6;border-left:4px solid #f5a623;padding:12px 16px;border-radius:6px;
+    margin:14px 0;font-size:13.5px;}
+  .info{background:var(--accent-soft);border-left:4px solid var(--accent);padding:12px 16px;
+    border-radius:6px;margin:14px 0;font-size:13.5px;}
+  .warn{background:#fdecec;border-left:4px solid #e05d5d;padding:12px 16px;border-radius:6px;
+    margin:14px 0;font-size:13.5px;}
+
+  /* ===== Frame examples ===== */
+  .frame{background:var(--code-bg);color:var(--code-ink);border-radius:8px;padding:14px 16px;
+    font-family:Consolas,monospace;font-size:13px;overflow-x:auto;margin:12px 0;line-height:1.6;}
+  .frame .lab{color:#93c5fd;}
+  .frame .ln{color:#4ade80;}  /* green highlight */
+  .frame .bl{color:#60a5fa;}
+  .frame .wt{color:#fbbf24;}
+  .frame b{color:#f8fafc;}
+
+  /* ===== Grid ===== */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr;}}
+
+  /* ===== Footer ===== */
+  footer{text-align:center;color:var(--muted);font-size:12.5px;padding-top:10px;}
+  .toc{columns:2;column-gap:30px;font-size:14px;}
+  @media(max-width:760px){.toc{columns:1;}}
+  .toc a{color:#2f4e9c;text-decoration:none;display:block;padding:3px 0;}
+  .toc a:hover{text-decoration:underline;}
+
+  /* ===== Print / PDF ===== */
+  @media print{
+    body{background:#fff;}
+    .wrap{max-width:100%;padding:0;}
+    section{box-shadow:none;break-inside:avoid;page-break-inside:avoid;}
+    .hero{box-shadow:none;}
+    thead{display:table-header-group;}
+    h2,h3{break-after:avoid;page-break-after:avoid;}
+  }
+  @page{size:A4;margin:16mm 14mm;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ================= HEADER ================= -->
+  <header class="hero">
+    <h1>Modbus 协议详解</h1>
+    <div class="sub">Modbus 是一种诞生于 1979 年（Modicon / 施耐德电气）的工业现场总线通用协议 &mdash; 基于 OSI 模型第 7 层（应用层），采用主从式（Client/Server）请求-应答通信机制，是最普及、最简单、最开放的工业通信协议之一。</div>
+    <div class="tags">
+      <span class="tag">应用层协议</span>
+      <span class="tag">主从广播模型</span>
+      <span class="tag">RTU / ASCII / TCP</span>
+      <span class="tag">端口 502</span>
+      <span class="tag">RS-485 / 以太网</span>
+      <span class="tag">开源免版税</span>
+    </div>
+  </header>
+
+  <!-- ================= 目录 ================= -->
+  <section>
+    <h2><span class="num">☰</span>文档目录</h2>
+    <div class="toc">
+      <a href="#s1">1. 协议概述</a>
+      <a href="#s2">2. 通信模型与原理</a>
+      <a href="#s3">3. 传输方式对比</a>
+      <a href="#s4">4. 数据模型（四种数据表）</a>
+      <a href="#s5">5. 寻址模型</a>
+      <a href="#s6">6. 功能码分类</a>
+      <a href="#s7">7. 公共功能码详解</a>
+      <a href="#s7b">7B. 线圈（Coil）详细报文协议</a>
+      <a href="#s8">8. 报文帧格式（RTU / ASCII / TCP）</a>
+      <a href="#s9">9. 报文实例解析</a>
+      <a href="#s10">10. 异常响应码</a>
+      <a href="#s11">11. 数据校验（CRC-16 / LRC）</a>
+      <a href="#s12">12. 通信时序与定时参数</a>
+      <a href="#s13">13. 字节序与多字节数据解析</a>
+      <a href="#s14">14. RS-485 物理层与布线</a>
+      <a href="#s15">15. 诊断功能（FC08 子功能）</a>
+      <a href="#s16">16. 网关与安全</a>
+      <a href="#s17">17. 故障排查速查表</a>
+      <a href="#s18">18. 常用库与参考资料</a>
+    </div>
+  </section>
+
+  <!-- ================= S1 协议概述 ================= -->
+  <section id="s1">
+    <h2><span class="num">1</span>协议概述</h2>
+    <p class="section-intro">Modbus（莫迪康总线）是工业自动化领域使用最广的通信协议之一，几乎所有 PLC、HMI、变频器（VFD）、传感器和智能仪表均支持该协议。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:26%;">属性</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><b>发明者 / 年份</b></td><td>Modicon（1979 年，现属施耐德电气 Schneider Electric）</td></tr>
+        <tr><td><b>协议位置</b></td><td>OSI 模型第 7 层（应用层），基于请求-应答（Request/Response）</td></tr>
+        <tr><td><b>通信模式</b></td><td>主从式（Master/Slave），即客户端/服务器（Client/Server）模型</td></tr>
+        <tr><td><b>当前维护组织</b></td><td>Modbus Organization（Modbus.org），规范 V1.1b3（2012）</td></tr>
+        <tr><td><b>主要变体</b></td><td>Modbus RTU、Modbus ASCII、Modbus TCP/UDP、（Modbus Plus 专有）</td></tr>
+        <tr><td><b>特点</b></td><td>开放、免版税、实现简单、报文紧凑、适用于多种物理介质</td></tr>
+        <tr><td><b>可靠性</b></td><td>串行链路由 CRC/LRC 校验 + 帧空闲间隔保证；TCP 由 TCP/IP 保证</td></tr>
+        <tr><td><b>安全性</b></td><td>原生无加密/认证；可通过 Modbus/TCP Security（TLS，端口 802）增强</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="info">Modbus 之所以经久不衰：数据结构简单、占用资源少、实现成本低、兼容性极好，特别适合需要稳定可靠读写寄存器与开关量的工业场景。</div>
+  </section>
+
+  <!-- ================= S2 通信模型 ================= -->
+  <section id="s2">
+    <h2><span class="num">2</span>通信模型与原理</h2>
+    <p class="section-intro">Modbus 采用单主站（主）/多从站（从）的广播-应答机制，一切通信由主站发起。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:22%;">概念</th><th style="width:26%;">角色</th><th>规则说明</th></tr></thead>
+      <tbody>
+        <tr><td><b>客户端（Master 主站）</b></td><td>发起通信的一方</td><td>主动发送请求，分配从站地址，控制广播；通常是 PLC、上位机、网关。</td></tr>
+        <tr><td><b>服务器（Slave 从站）</b></td><td>响应请求的一方</td><td>监听总线，仅当请求中地址与自身相符或为广播时才做出响应。</td></tr>
+        <tr><td><b>查询 - 响应周期</b></td><td>基础交互</td><td>主站向特定从站发送查询 → 从站返回响应（正常或异常）。</td></tr>
+        <tr><td><b>广播</b></td><td>主站向从站 0</td><td>目标地址 0（0x00）表示广播；所有从站执行但<b>不返回响应</b>，仅用于写操作。</td></tr>
+        <tr><td><b>地址范围</b></td><td>有效从站地址</td><td>串行链路 1~247；0 为广播地址；248~255 保留。</td></tr>
+        <tr><td><b>帧间隔</b></td><td>RTU 分帧</td><td>相邻两帧之间至少保持 3.5 个字符的空闲时间（T3.5）。</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="note"><b>关键约束：</b>同一总线上所有设备的传输模式必须一致（不能混用 RTU 与 ASCII）；主站任一时刻只能有一个事务在网络上，因此天然无冲突。</div>
+  </section>
+
+  <!-- ================= S3 传输方式对比 ================= -->
+  <section id="s3">
+    <h2><span class="num">3</span>传输方式对比</h2>
+    <p class="section-intro">Modbus 主要有三种传输变体，应用于不同物理层与网络场景。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>特性</th><th>Modbus RTU</th><th>Modbus ASCII</th><th>Modbus TCP/UDP</th></tr></thead>
+      <tbody>
+        <tr><td><b>物理层/介质</b></td><td>RS-232 / RS-485 / RS-422</td><td>RS-232 / RS-485</td><td>以太网（TCP/IP）</td></tr>
+        <tr><td><b>数据编码</b></td><td>8 位二进制</td><td>ASCII 字符（16 进制可见字符）</td><td>二进制</td></tr>
+        <tr><td><b>字节位数</b></td><td>11 bit/字节（含起始/停止/校验）</td><td>10 bit/字节</td><td>无固定</td></tr>
+        <tr><td><b>差错校验</b></td><td>CRC-16（多项式 0xA001）</td><td>LRC（8 位纵冗余校验）</td><td>无（由 TCP 保障，帧头长度字段）</td></tr>
+        <tr><td><b>节点数</b></td><td>1~247</td><td>1~247</td><td>不受物理限制（网关内可用单元标识 0~255）</td></tr>
+        <tr><td><b>帧头/帧尾</b></td><td>无（靠沉默间隔分帧）</td><td>起始 <code>:</code> / 结束 <code>CR LF</code></td><td>MBAP 头（7 字节）</td></tr>
+        <tr><td><b>典型波特率</b></td><td>9600 ~ 115200 bps</td><td>1200 ~ 19200 bps</td><td>10/100/1000 Mbps</td></tr>
+        <tr><td><b>传输效率</b></td><td><span class="badge b-green">高（紧凑）</span></td><td><span class="badge b-amber">低（约 50%）</span></td><td><span class="badge b-blue">高</span></td></tr>
+        <tr><td><b>应用现状</b></td><td><span class="badge b-green">工业主流，最常用</span></td><td><span class="badge b-gray">老旧设备 / 终端调试</span></td><td><span class="badge b-blue">跨网段/云采集主流</span></td></tr>
+        <tr><td><b>默认端口</b></td><td>—</td><td>—</td><td>TCP/UDP 502</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- ================= S4 数据模型 ================= -->
+  <section id="s4">
+    <h2><span class="num">4</span>数据模型（四种数据表）</h2>
+    <p class="section-intro">Modbus 将设备数据抽象为四张独立的表，每张表最大 65536 个可寻址项。表中数据的"含义"由设备厂商定义，协议只规定地址空间。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>数据表</th><th>对象类型</th><th>数据类型</th><th>访问权限</th><th>传统地址（1 起始）</th><th>报文地址（0 起始）</th><th>对应功能码</th></tr></thead>
+      <tbody>
+        <tr><td><b>线圈 Coils</b></td><td>0x</td><td>单比特</td><td>读/写</td><td>00001 ~ 09999（实为 1~65536）</td><td>0x0000 ~ 0xFFFF</td><td>01、05、0F</td></tr>
+        <tr><td><b>离散输入 Discrete Inputs</b></td><td>1x</td><td>单比特</td><td>只读</td><td>10001 ~ 19999</td><td>0x0000 ~ 0xFFFF</td><td>02</td></tr>
+        <tr><td><b>输入寄存器 Input Registers</b></td><td>3x</td><td>16 位字</td><td>只读</td><td>30001 ~ 39999</td><td>0x0000 ~ 0xFFFF</td><td>04</td></tr>
+        <tr><td><b>保持寄存器 Holding Registers</b></td><td>4x</td><td>16 位字</td><td>读/写</td><td>40001 ~ 49999</td><td>0x0000 ~ 0xFFFF</td><td>03、06、10、16、17</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>数据表访问矩阵</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>数据表类型</th><th>读 (FC)</th><th>写单个 (FC)</th><th>写多个 (FC)</th></tr></thead>
+      <tbody>
+        <tr><td>线圈（输出位）</td><td>01 (0x01)</td><td>05 (0x05)</td><td>0F (0x0F)</td></tr>
+        <tr><td>离散输入（输入位）</td><td>02 (0x02)</td><td>—（只读）</td><td>—</td></tr>
+        <tr><td>保持寄存器（输出字）</td><td>03 (0x03)</td><td>06 (0x06)</td><td>10 (0x10)</td></tr>
+        <tr><td>输入寄存器（输入字）</td><td>04 (0x04)</td><td>—（只读）</td><td>—</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="warn"><b>1 起始 vs 0 起始陷阱：</b>文档上用传统 5 位地址（如保持寄存器 40001），而报文内使用 0 起始地址。请求时需<b>减 1</b>（40001 → 0x0000）。不同厂商约定不同，务必核对设备手册。</div>
+  </section>
+
+  <!-- ================= S5 寻址模型 ================= -->
+  <section id="s5">
+    <h2><span class="num">5</span>寻址模型</h2>
+    <p class="section-intro">Modbus 的寻址包含从站（单元）寻址与数据对象寻址两个层面。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:24%;">寻址项</th><th style="width:20%;">位数</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><b>从站地址（Unit/Slave ID）</b></td><td>1 字节（0~255）</td><td>RTU/ASCII 中为从站地址；TCP 的 MBAP 中用单元标识（Unit Identifier）表示。</td></tr>
+        <tr><td><b>有效从站地址</b></td><td>1~247</td><td>0 用于广播，248~255 保留。</td></tr>
+        <tr><td><b>数据对象地址</b></td><td>16 位（0~65535）</td><td>每张数据表内从 0x0000 到 0xFFFF。</td></tr>
+        <tr><td><b>数据对象数量</b></td><td>16 位</td><td>请求中指定读取/写入的对象数量（受最大值限制）。</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="note">在 Modbus TCP 网关后接多个 RTU 从站的场景中，TCP MBAP 的单元标识（Unit Identifier）常被置为下游从站地址（1~247），用于网关路由。</div>
+  </section>
+
+  <!-- ================= S6 功能码分类 ================= -->
+  <section id="s6">
+    <h2><span class="num">6</span>功能码分类</h2>
+    <p class="section-intro">功能码是 Modbus 请求/响应 PDU 的核心，决定执行何种数据操作。功能码分为三类：</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:22%;">类别</th><th style="width:20%;">代码范围</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><b>公共功能码（Public）</b></td><td>已定义标准功能码</td><td>由 Modbus.org 定义，功能唯一、实现受到约束，通用性最强。</td></tr>
+        <tr><td><b>用户定义功能码（User-Defined）</b></td><td>65~72、100~110 + 其余保留区</td><td>由用户/厂商自由定义使用，不保证跨厂商通用。</td></tr>
+        <tr><td><b>保留功能码（Reserved）</b></td><td>其余未定义</td><td>留作将来扩展，当前不得使用。</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>功能码操作组划分</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>分组</th><th>范围</th><th>包含</th></tr></thead>
+      <tbody>
+        <tr><td><b>位操作 - 逻辑（读）</b></td><td>01 ~ 02</td><td>读线圈、读离散输入</td></tr>
+        <tr><td><b>位操作 - 逻辑（写）</b></td><td>05、0F</td><td>写单个线圈、写多个线圈</td></tr>
+        <tr><td><b>寄存器操作（读）</b></td><td>03、04</td><td>读保持寄存器、读输入寄存器</td></tr>
+        <tr><td><b>寄存器操作（写）</b></td><td>06、10、16、17</td><td>写单寄存器、写多寄存器、掩码写、读改写</td></tr>
+        <tr><td><b>数据与文件操作</b></td><td>14、15、18</td><td>读文件记录、写文件记录、读 FIFO 队列</td></tr>
+        <tr><td><b>诊断与系统</b></td><td>07、08、0B、0C、11、2B</td><td>读状态、诊断、事件计数器/日志、报告从站 ID、封装接口传输</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- ================= S7 公共功能码详解 ================= -->
+  <section id="s7">
+    <h2><span class="num">7</span>公共功能码详解</h2>
+    <p class="section-intro">下表列出最常用的公共功能码及其报文要点。功能码值位于 1~127，最高位（128）用于异常响应标记。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>码 (Hex)</th><th>名称</th><th>数据表</th><th>访问</th><th>广播</th><th>数量上限</th><th>关键用法</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">01 (0x01)</td><td>Read Coils<br>读线圈</td><td>线圈</td><td>只读</td><td>否</td><td>2000 位</td><td>读取连续的开关量输出状态（ON/OFF）</td></tr>
+        <tr><td class="mono">02 (0x02)</td><td>Read Discrete Inputs<br>读离散输入</td><td>离散输入</td><td>只读</td><td>否</td><td>2000 位</td><td>读取 DI 传感器/开关输入状态</td></tr>
+        <tr><td class="mono">03 (0x03)</td><td>Read Holding Registers<br>读保持寄存器</td><td>保持寄存器</td><td>只读</td><td>否</td><td>125 寄存器</td><td>读设备参数、设定值（<b>最常用</b>）</td></tr>
+        <tr><td class="mono">04 (0x04)</td><td>Read Input Registers<br>读输入寄存器</td><td>输入寄存器</td><td>只读</td><td>否</td><td>125 寄存器</td><td>读采集量（电压、电流、温度等）</td></tr>
+        <tr><td class="mono">05 (0x05)</td><td>Write Single Coil<br>写单个线圈</td><td>线圈</td><td>写</td><td>是</td><td>1 位</td><td>控制一路继电器。数据 FF00=ON，0000=OFF</td></tr>
+        <tr><td class="mono">06 (0x06)</td><td>Write Single Register<br>写单个寄存器</td><td>保持寄存器</td><td>写</td><td>是</td><td>1 寄存器</td><td>修改单个保持寄存器值</td></tr>
+        <tr><td class="mono">07 (0x07)</td><td>Read Exception Status<br>读异常状态</td><td>—</td><td>只读</td><td>否</td><td>—</td><td>串行链路专用，读取 8 位异常状态字</td></tr>
+        <tr><td class="mono">08 (0x08)</td><td>Diagnostics<br>诊断</td><td>—</td><td>—</td><td>否</td><td>子功能</td><td>串行链路专用，含多种子功能（见第 15 节）</td></tr>
+        <tr><td class="mono">0B (0x0B)</td><td>Get Comm Event Counter<br>读通信事件计数</td><td>—</td><td>只读</td><td>否</td><td>—</td><td>串行链路专用，读事件计数</td></tr>
+        <tr><td class="mono">0C (0x0C)</td><td>Get Comm Event Log<br>读通信事件日志</td><td>—</td><td>只读</td><td>否</td><td>—</td><td>串行链路专用，读事件日志</td></tr>
+        <tr><td class="mono">0F (0x0F)</td><td>Write Multiple Coils<br>写多个线圈</td><td>线圈</td><td>写</td><td>是</td><td>1968 位</td><td>批量设置多个开关量输出</td></tr>
+        <tr><td class="mono">10 (0x10)</td><td>Write Multiple Registers<br>写多个寄存器</td><td>保持寄存器</td><td>写</td><td>是</td><td>123 寄存器</td><td>批量下发参数（<b>最常用</b>）</td></tr>
+        <tr><td class="mono">11 (0x11)</td><td>Report Server ID<br>报告从站 ID</td><td>—</td><td>只读</td><td>否</td><td>—</td><td>报告设备 ID、运行状态、厂商信息</td></tr>
+        <tr><td class="mono">14 (0x14)</td><td>Read File Record<br>读文件记录</td><td>文件</td><td>只读</td><td>否</td><td>—</td><td>读取文件子记录（每子记录 ≤196 字节）</td></tr>
+        <tr><td class="mono">15 (0x15)</td><td>Write File Record<br>写文件记录</td><td>文件</td><td>写</td><td>否</td><td>—</td><td>写入文件子记录</td></tr>
+        <tr><td class="mono">16 (0x16)</td><td>Mask Write Register<br>掩码写寄存器</td><td>保持寄存器</td><td>写</td><td>否</td><td>1 寄存器</td><td>带 AND/OR 掩码更新单个寄存器（位级修改）</td></tr>
+        <tr><td class="mono">17 (0x17)</td><td>Read/Write Multiple Registers<br>读改写寄存器</td><td>保持寄存器</td><td>读/写</td><td>否</td><td>读125/写121</td><td>一次事务内先写后读，保证一致性</td></tr>
+        <tr><td class="mono">18 (0x18)</td><td>Read FIFO Queue<br>读 FIFO 队列</td><td>—</td><td>只读</td><td>否</td><td>31 项</td><td>读取 FIFO 队列中的第 1 项</td></tr>
+        <tr><td class="mono">2B (0x2B)</td><td>Encapsulated Interface Transport<br>封装接口传输</td><td>—</td><td>—</td><td>否</td><td>MEI 类型</td><td>为设备识别、CANopen 等提供封装通道（见 0x2B/0x0E）</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>功能码 2B / 0E - Read Device Identification</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>MEI Type</th><th>访问</th><th>对象 ID</th><th>对象名称</th></tr></thead>
+      <tbody>
+        <tr><td>14 (0x0E)</td><td>只读</td><td>0x00</td><td>厂商名称 VendorName</td></tr>
+        <tr><td>14 (0x0E)</td><td>只读</td><td>0x01</td><td>产品代码 ProductCode</td></tr>
+        <tr><td>14 (0x0E)</td><td>只读</td><td>0x02</td><td>主版本号 MajorMinorRevision</td></tr>
+        <tr><td>14 (0x0E)</td><td>只读</td><td>0x03</td><td>厂商 URL VendorUrl</td></tr>
+        <tr><td>14 (0x0E)</td><td>只读</td><td>0x04</td><td>产品名称 ProductName</td></tr>
+        <tr><td>14 (0x0E)</td><td>只读</td><td>0x05</td><td>型号 ModelName</td></tr>
+        <tr><td>14 (0x0E)</td><td>只读</td><td>0x06</td><td>用户应用名 UserApplicationName</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- ================= S7B 线圈详细报文协议 ================= -->
+  <section id="s7b">
+    <h2><span class="num">7B</span>线圈（Coil）详细报文协议</h2>
+    <p class="section-intro">线圈（Coils）是 Modbus 四种数据表中唯一的<b>单比特读/写</b>对象，用于开关量输出（继电器、指示灯、阀门开合等）。本节给出 FC01 读、FC05 写单、FC0F 写多三种操作的<b>完整报文结构</b>与<b>位打包规则</b>。</p>
+
+    <div class="info">三种线圈操作的<b>功能码汇总</b>：读 = <code>01 (0x01)</code>、写单个 = <code>05 (0x05)</code>、写多个 = <code>0F (0x0F)</code>。其中 05/0F 支持广播（地址 0），01 不支持。</div>
+
+    <h3>① FC01 (0x01) 读线圈 Read Coils</h3>
+    <p>读取 1~2000 个连续线圈的状态（ON=1 / OFF=0）。一次最多读 2000 位（250 字节）。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:20%;">方向</th><th>字段</th><th>长度</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td rowspan="5"><b>请求</b></td><td>从站地址 / 单元ID</td><td>1 字节</td><td>1~247（TCP 中为 Unit ID）</td></tr>
+        <tr><td>功能码</td><td>1 字节</td><td class="mono">0x01</td></tr>
+        <tr><td>起始地址</td><td>2 字节</td><td>第一个线圈的 0 起始地址（0x0000~0xFFFF）</td></tr>
+        <tr><td>线圈数量</td><td>2 字节</td><td>1~2000（0x0001~0x07D0）</td></tr>
+        <tr><td>校验（RTU）</td><td>2 字节</td><td>CRC-16；TCP 无此字段</td></tr>
+        <tr><td rowspan="4"><b>响应</b></td><td>从站地址 / 单元ID</td><td>1 字节</td><td>回显</td></tr>
+        <tr><td>功能码</td><td>1 字节</td><td class="mono">0x01</td></tr>
+        <tr><td>字节数</td><td>1 字节</td><td>返回数据字节数 = ⌈数量/8⌉</td></tr>
+        <tr><td>线圈状态</td><td>N 字节</td><td>按位打包的状态值（规则见下）</td></tr>
+      </tbody>
+    </table></div>
+
+    <p><b>位打包规则（关键）：</b>返回的每个字节按位表示线圈状态。字节内<b>最低位（bit0）对应起始线圈</b>，依次递增；一个字节最多容纳 8 个线圈，超出部分放入下一字节。</p>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>字节</th><th>Bit 7</th><th>Bit 6</th><th>Bit 5</th><th>Bit 4</th><th>Bit 3</th><th>Bit 2</th><th>Bit 1</th><th>Bit 0（LSB）</th></tr></thead>
+      <tbody>
+        <tr><td><b>字节 0</b></td><td class="c">线圈 8</td><td class="c">线圈 7</td><td class="c">线圈 6</td><td class="c">线圈 5</td><td class="c">线圈 4</td><td class="c">线圈 3</td><td class="c">线圈 2</td><td class="c"><b>起始线圈</b></td></tr>
+        <tr><td><b>字节 1</b></td><td class="c">16</td><td class="c">15</td><td class="c">14</td><td class="c">13</td><td class="c">12</td><td class="c">11</td><td class="c">10</td><td class="c">9</td></tr>
+      </tbody>
+    </table></div>
+    <div class="warn"><b>易错点：</b>Modbus 采用 <b>LSB-first（低位在前）</b>打包，与多字节大端数据不同。解析时必须从每字节的 bit0 开始映射到起始线圈，切勿按 bit7 对齐。</div>
+
+    <h3>② FC05 (0x05) 写单个线圈 Write Single Coil</h3>
+    <p>将单个线圈置 ON（0xFF00）或 OFF（0x0000）。响应 = 请求的回显。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:20%;">方向</th><th>字段</th><th>长度</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td rowspan="5"><b>请求</b></td><td>从站地址 / 单元ID</td><td>1 字节</td><td>1~247（TCP 中为 Unit ID）</td></tr>
+        <tr><td>功能码</td><td>1 字节</td><td class="mono">0x05</td></tr>
+        <tr><td>线圈地址</td><td>2 字节</td><td>线圈的 0 起始地址</td></tr>
+        <tr><td>线圈值</td><td>2 字节</td><td><b>0xFF00 = ON</b>，<b>0x0000 = OFF</b>（其他值非法）</td></tr>
+        <tr><td>校验（RTU）</td><td>2 字节</td><td>CRC-16；TCP 无此字段</td></tr>
+        <tr><td><b>响应</b></td><td colspan="3">与请求<b>逐字节完全相同</b>的回显（成功时）；FC05 规范要求回显。</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>③ FC0F (0x0F) 写多个线圈 Write Multiple Coils</h3>
+    <p>批量写入 1~1968 个连续线圈。请求中携带字节数和打包后的状态数据。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:20%;">方向</th><th>字段</th><th>长度</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td rowspan="7"><b>请求</b></td><td>从站地址 / 单元ID</td><td>1 字节</td><td>1~247（TCP 中为 Unit ID）</td></tr>
+        <tr><td>功能码</td><td>1 字节</td><td class="mono">0x0F</td></tr>
+        <tr><td>起始地址</td><td>2 字节</td><td>第一个线圈的 0 起始地址</td></tr>
+        <tr><td>线圈数量</td><td>2 字节</td><td>1~1968（0x0001~0x07B0）</td></tr>
+        <tr><td>数据字节数</td><td>1 字节</td><td>N = ⌈数量/8⌉</td></tr>
+        <tr><td>线圈数据</td><td>N 字节</td><td>按位打包的状态值（LSB-first）</td></tr>
+        <tr><td>校验（RTU）</td><td>2 字节</td><td>CRC-16；TCP 无此字段</td></tr>
+        <tr><td rowspan="4"><b>响应</b></td><td>从站地址 / 单元ID</td><td>1 字节</td><td>回显</td></tr>
+        <tr><td>功能码</td><td>1 字节</td><td class="mono">0x0F</td></tr>
+        <tr><td>起始地址</td><td>2 字节</td><td>回显请求中的起始地址</td></tr>
+        <tr><td>线圈数量</td><td>2 字节</td><td>回显请求中的数量</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>位打包数量速查</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>线圈数量</th><th class="c">1~8</th><th class="c">9~16</th><th class="c">17~24</th><th class="c">…&nbsp;&nbsp;N</th><th class="c">最多 2000（FC01）</th><th class="c">最多 1968（FC0F）</th></tr></thead>
+      <tbody>
+        <tr><td><b>数据字节数</b></td><td class="c">1</td><td class="c">2</td><td class="c">3</td><td class="c">⌈N/8⌉</td><td class="c">250</td><td class="c">246</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>完整报文实例</h3>
+    <p><b>示例 A：FC05 写单个线圈置 ON（RTU，从站 01，线圈地址 0x0001）</b></p>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:20%;">方向</th><th>RTU 十六进制</th><th>解析</th></tr></thead>
+      <tbody>
+        <tr><td><b>请求</b></td><td class="hex">01 05 00 01 FF 00 DD FA</td><td>地址01，FC05，线圈0001，FF00=ON，CRC</td></tr>
+        <tr><td><b>响应</b></td><td class="hex">01 05 00 01 FF 00 DD FA</td><td>回显，写入成功</td></tr>
+      </tbody>
+    </table></div>
+
+    <p><b>示例 B：FC01 读 10 个线圈（RTU，从站 01，起始地址 0x0000）</b></p>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:20%;">方向</th><th>RTU 十六进制</th><th>解析</th></tr></thead>
+      <tbody>
+        <tr><td><b>请求</b></td><td class="hex">01 01 00 00 00 0A 3D 0D</td><td>读起始00起10个线圈 → 需 2 字节</td></tr>
+        <tr><td><b>响应</b></td><td class="hex">01 01 02 CD 6B 0B 08</td><td>字节数02；CD=线圈1~8，6B=线圈9~10</td></tr>
+      </tbody>
+    </table></div>
+    <div class="info"><b>响应位解析：</b>字节 <span class="hex">CD</span> = <span class="mono">1100 1101</span>，LSB 起 → 线圈1=1、2=0、3=1、4=1、5=0、6=0、7=1、8=1；字节 <span class="hex">6B</span> = <span class="mono">0110 1011</span> → 线圈9=1、10=1。说明：CD 与 6B 的位序均为 bit0 对应本组第一个线圈（本例仅演示打包位序，具体地址映射以设备手册为准）。</div>
+
+    <p><b>示例 C：FC0F 写 10 个线圈（RTU，从站 01，起始地址 0x0000）</b></p>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:20%;">方向</th><th>RTU 十六进制</th><th>解析</th></tr></thead>
+      <tbody>
+        <tr><td><b>请求</b></td><td class="hex">01 0F 00 00 00 0A 02 CD 01 BF 0B</td><td>写10线圈，数据2字节：CD 01</td></tr>
+        <tr><td><b>响应</b></td><td class="hex">01 0F 00 00 00 0A 6F F0</td><td>回显起始地址0000 与数量000A</td></tr>
+      </tbody>
+    </table></div>
+    <div class="note"><b>广播注意：</b>FC05 / FC0F 用地址 0 广播时，所有从站执行写入但<b>不返回响应</b>。FC01 读操作不支持广播。</div>
+  </section>
+
+  <!-- ================= S8 报文帧格式 ================= -->
+  <section id="s8">
+    <h2><span class="num">8</span>报文帧格式（RTU / ASCII / TCP）</h2>
+    <p class="section-intro">Modbus 报文由 地址域 + 功能码 + 数据域 + 校验域 组成。三种变体的 ADU（应用数据单元）外层不同，但内部 PDU（协议数据单元）结构一致。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:18%;">变体</th><th>报文结构（ADU）</th></tr></thead>
+      <tbody>
+        <tr><td><b>PDU（通用）</b></td><td class="mono">功能码(1B) + 数据域(NB)</td></tr>
+        <tr><td><b>RTU ADU</b></td><td class="mono">从站地址(1B) + PDU + CRC-16(2B)</td></tr>
+        <tr><td><b>ASCII ADU</b></td><td class="mono">":"(起始) + 地址(2字符) + PDU + LRC(2字符) + CR LF</td></tr>
+        <tr><td><b>TCP ADU</b></td><td class="mono">事务标识(2B) + 协议标识(2B) + 长度(2B) + 单元标识(1B) + PDU</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>① Modbus RTU 帧格式</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>字段</th><th>长度</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><b>从站地址</b> Slave Address</td><td>1 字节</td><td>1~247，0 为广播地址</td></tr>
+        <tr><td><b>功能码</b> Function</td><td>1 字节</td><td>指定读写动作，如 0x03 读保持寄存器</td></tr>
+        <tr><td><b>数据域</b> Data</td><td>0~252 字节</td><td>含寄存器地址、数量、数据值等</td></tr>
+        <tr><td><b>CRC-16</b></td><td>2 字节</td><td>低字节在前，高字节在后</td></tr>
+      </tbody>
+    </table></div>
+    <div class="frame"><span class="lab">RTU 帧</span> | 地址 | 功能码 | 数据域 | CRC低 | CRC高 |<br>
+    <span class="mono">ADU 总长 = 4 + 数据长度（最大 256 字节）</span><br>
+    <span class="mono">帧两侧必须 ≥ 3.5 个字符时间的空闲间隔（T3.5）</span></div>
+
+    <h3>② Modbus ASCII 帧格式</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>字段</th><th>编码</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><b>起始符</b></td><td>1 字符</td><td>冒号 ":"（ASCII 58）</td></tr>
+        <tr><td><b>从站地址</b></td><td>2 字符</td><td>十六进制 ASCII（0~9、A~F）</td></tr>
+        <tr><td><b>功能码 + 数据</b></td><td>N 字符</td><td>每个字节以两个十六进制字符表示</td></tr>
+        <tr><td><b>LRC 校验</b></td><td>2 字符</td><td>8 位纵冗余校验</td></tr>
+        <tr><td><b>结束符</b></td><td>2 字符</td><td>回车 CR + 换行 LF</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>③ Modbus TCP 帧格式（MBAP）</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>字段</th><th>长度</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><b>事务标识</b> Transaction ID</td><td>2 字节</td><td>客户端用于匹配请求/响应</td></tr>
+        <tr><td><b>协议标识</b> Protocol ID</td><td>2 字节</td><td>Modbus 恒为 0x0000</td></tr>
+        <tr><td><b>长度</b> Length</td><td>2 字节</td><td>后续 Unit ID + PDU 的字节数</td></tr>
+        <tr><td><b>单元标识</b> Unit ID</td><td>1 字节</td><td>类似从站地址，0~255；纯 TCP 常设为 0 或 0xFF</td></tr>
+        <tr><td><b>PDU</b></td><td>0~253 字节</td><td>功能码 + 数据</td></tr>
+      </tbody>
+    </table></div>
+    <div class="info"><b>Modbus TCP 不重新加 CRC：</b>TCP/IP 已保证数据完整性、有序性与可达性，因此省去 CRC，并移除串行帧的沉默间隔分帧逻辑。</div>
+  </section>
+
+  <!-- ================= S9 报文实例解析 ================= -->
+  <section id="s9">
+    <h2><span class="num">9</span>报文实例解析</h2>
+
+    <h3>示例 1：读保持寄存器（FC03），读取从站 1 的 2 个寄存器</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:20%;">方向</th><th>RTU 十六进制报文</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td><b>请求</b></td><td class="hex">01 03 00 00 00 02 C4 0B</td><td>站号01，功能码03，起始地址0x0000，数量0x0002，CRC=0xC40B</td></tr>
+        <tr><td><b>响应</b></td><td class="hex">01 03 04 00 12 00 34 85 33</td><td>站号01，功能码03，字节数04，数据=0x0012(18)、0x0034(52)，CRC</td></tr>
+      </tbody>
+    </table></div>
+    <div class="frame"><span class="wt">请求</span>：<span class="bl">01</span> <span class="wt">03</span> 00 00 00 02 C4 0B<br>
+<span class="lab">      │    │    └起始地址=0
+      │    │       └─ 数量=2
+      │    └─功能码03(读保持寄存器)
+      └────── 从站地址=01</span><br><br>
+<span class="wt">响应</span>：<span class="bl">01</span> <span class="wt">03</span> <span class="ln">04</span> 00 12 00 34 85 33<br>
+<span class="lab">      │    │   │    └寄存器2=0x0034=52
+      │    │   │    └─寄存器1=0x0012=18
+      │    │   └字节数=4
+      │    └─功能码03
+      └────── 从站地址=01</span></div>
+
+    <h3>示例 2：读多个保持寄存器（FC03），读取从站 0x11 的 40017~40018</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:20%;">方向</th><th>RTU 十六进制报文</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td><b>请求</b></td><td class="hex">11 03 00 10 00 02 C5 CD</td><td>站号0x11，功能码03，起始地址0x0010(40017)，数量2</td></tr>
+        <tr><td><b>响应</b></td><td class="hex">11 03 04 00 0A 01 0C B5 C9</td><td>寄存器40017=0x000A，寄存器40018=0x010C</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>示例 3：写单个寄存器（FC06）</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:20%;">方向</th><th>RTU 十六进制报文</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td><b>请求</b></td><td class="hex">01 06 00 01 00 03 98 0B</td><td>向保持寄存器 0x0001 写入值 0x0003</td></tr>
+        <tr><td><b>响应</b></td><td class="hex">01 06 00 01 00 03 98 0B</td><td>回显原报文（确认成功）</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>示例 4：写单个线圈（FC05）</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>数据值</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td class="hex">FF 00</td><td>线圈置 ON（接通）</td></tr>
+        <tr><td class="hex">00 00</td><td>线圈置 OFF（断开）</td></tr>
+        <tr><td class="hex">其他值</td><td>非法数据值（返回异常 0x03）</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>示例 5：Modbus TCP 写单个寄存器（带 MBAP 头）</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:20%;">方向</th><th>TCP 报文</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td><b>请求</b></td><td class="hex">00 01 00 00 00 06 01 06 00 01 00 03</td><td>事务0001，协议0000，长度6，单元01，FC06，地址0001，值0003</td></tr>
+        <tr><td><b>响应</b></td><td class="hex">00 01 00 00 00 06 01 06 00 01 00 03</td><td>回显</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- ================= S10 异常响应码 ================= -->
+  <section id="s10">
+    <h2><span class="num">10</span>异常响应码</h2>
+    <p class="section-intro">当从站无法处理请求时，会在响应中把功能码最高位置 1（原功能码 + 0x80），后面跟 1 字节异常码。</p>
+    <div class="frame"><span class="wt">异常响应格式</span><br>RTU：地址 | <b class="mono" style="color:#f87171">功能码 + 0x80</b> | 异常码 | CRC16<br>
+TCP：MBAP头 | <b class="mono" style="color:#f87171">功能码 + 0x80</b> | 异常码</div>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>异常码 (Hex)</th><th>名称</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">01 (0x01)</td><td>Illegal Function<br>非法功能</td><td>从站不支持该功能码</td></tr>
+        <tr><td class="mono">02 (0x02)</td><td>Illegal Data Address<br>非法数据地址</td><td>地址超出设备支持的寄存器/线圈范围</td></tr>
+        <tr><td class="mono">03 (0x03)</td><td>Illegal Data Value<br>非法数据值</td><td>数据域中的值超出允许范围</td></tr>
+        <tr><td class="mono">04 (0x04)</td><td>Slave Device Failure<br>从站设备故障</td><td>从站处理时发生不可恢复错误</td></tr>
+        <tr><td class="mono">05 (0x05)</td><td>Acknowledge<br>确认</td><td>已接受请求且正在处理，需要较长时间（长时命令）</td></tr>
+        <tr><td class="mono">06 (0x06)</td><td>Slave Device Busy<br>从站设备忙</td><td>从站正忙，要求稍后重试</td></tr>
+        <tr><td class="mono">08 (0x08)</td><td>Memory Parity Error<br>内存奇偶校验错误</td><td>扩展内存奇偶校验失败</td></tr>
+        <tr><td class="mono">0A (0x0A)</td><td>Gateway Path Unavailable<br>网关路径不可用</td><td>网关无法为请求路由</td></tr>
+        <tr><td class="mono">0B (0x0B)</td><td>Gateway Target Device Failed to Respond<br>网关目标无响应</td><td>下游设备未在超时内响应</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="info">若主站收到异常响应，应解析异常码定位问题（例如 0x02 常由"1起始/0起始地址偏差"引起，0x03 常因功能码数量字段错误）。</div>
+  </section>
+
+  <!-- ================= S11 数据校验 ================= -->
+  <section id="s11">
+    <h2><span class="num">11</span>数据校验（CRC-16 / LRC）</h2>
+    <p class="section-intro">串行链路（RTU/ASCII）需要额外的差错校验；TCP 依赖传输层保护，无需帧校验。</p>
+
+    <h3>CRC-16（RTU 使用，多项式 0xA001）</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:34%;">步骤</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>1. 初始化</td><td>CRC 寄存器置 0xFFFF</td></tr>
+        <tr><td>2. 逐字节异或</td><td>将当前字节与 CRC 寄存器低字节异或</td></tr>
+        <tr><td>3. 右移 8 次</td><td>对每一位右移，若最低位移出为 1，则与 0xA001 异或</td></tr>
+        <tr><td>4. 全部字节处理完</td><td>得到的 CRC 值，<b>低字节在前、高字节在后</b>追加到帧尾</td></tr>
+      </tbody>
+    </table></div>
+    <div class="frame"><span class="lab">CRC-16 参考实现（C 语言）</span><br>
+uint16_t crc16(uint8_t *data, uint16_t len){<br>
+&nbsp;&nbsp;uint16_t crc = <span class="wt">0xFFFF</span>;<br>
+&nbsp;&nbsp;for(uint16_t i=0;i&lt;len;i++){<br>
+&nbsp;&nbsp;&nbsp;&nbsp;crc ^= data[i];<br>
+&nbsp;&nbsp;&nbsp;&nbsp;for(uint8_t j=0;j&lt;8;j++){<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if(crc &amp; 1) crc = (crc&gt;&gt;1) ^ <span class="wt">0xA001</span>;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;else crc &gt;&gt;= 1;<br>
+&nbsp;&nbsp;&nbsp;&nbsp;}<br>
+&nbsp;&nbsp;}<br>
+&nbsp;&nbsp;return crc;<br>
+}</div>
+
+    <h3>LRC 校验（ASCII 使用）</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:34%;">步骤</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>1. 累加</td><td>将地址、功能码、数据各字节累加</td></tr>
+        <tr><td>2. 求补码</td><td>对累加结果取 2 的补码（逐位取反 + 1）</td></tr>
+        <tr><td>3. 编码</td><td>结果以两位十六进制 ASCII 字符表示</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- ================= S12 通信时序 ================= -->
+  <section id="s12">
+    <h2><span class="num">12</span>通信时序与定时参数</h2>
+    <p class="section-intro">Modbus RTU 的帧分隔与超时以"字符时间"为单位计算。字符时间 = 11 bit / 波特率。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>参数</th><th>倍数</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr><td><b>T1.5</b></td><td>1.5 个字符时间</td><td>帧内字符间的最大间隔（字符间超时）</td></tr>
+        <tr><td><b>T3.5</b></td><td>3.5 个字符时间</td><td>帧间最小静默间隔，用于分帧；发送前主站必须静默 ≥ T3.5</td></tr>
+        <tr><td><b>响应超时</b></td><td>串行 500ms~3s，TCP 1s~5s</td><td>主站等待从站响应的最大时间</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>不同波特率下的定时值</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>波特率 (bps)</th><th>字符时间 (ms)</th><th>T1.5 (ms)</th><th>T3.5 (ms)</th></tr></thead>
+      <tbody>
+        <tr><td>9600</td><td>1.146</td><td>1.72</td><td>4.01</td></tr>
+        <tr><td>19200</td><td>0.573</td><td>0.86</td><td>2.005</td></tr>
+        <tr><td>38400</td><td>0.286</td><td>0.43</td><td>1.00</td></tr>
+        <tr><td>57600</td><td>0.191</td><td>0.286</td><td>0.667</td></tr>
+        <tr><td>115200</td><td>0.0955</td><td>0.143</td><td>0.334</td></tr>
+      </tbody>
+    </table></div>
+    <div class="warn">自定义固件实现时常把 T3.5 算错，导致帧粘连、CRC 偶发失败。建议由库根据波特率自动计算静默间隔。</div>
+  </section>
+
+  <!-- ================= S13 字节序与多字节数据 ================= -->
+  <section id="s13">
+    <h2><span class="num">13</span>字节序与多字节数据解析</h2>
+    <p class="section-intro">Modbus 寄存器为 16 位字。32 位数据（long、float、时间戳）需占用两个连续寄存器。规范<b>不强制字节序</b>，由厂商决定，解析时必须核对设备手册。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>约定</th><th>排列方式（值 = 0x12345678）</th><th>常见厂商</th></tr></thead>
+      <tbody>
+        <tr><td><b>大端 ABCD</b></td><td>高字在低地址，字内字节大端：<span class="hex">12 34 56 78</span></td><td>施耐德部分设备、部分 ABB</td></tr>
+        <tr><td><b>小端 DCBA</b></td><td>低字在低地址，字内字节小端：<span class="hex">78 56 34 12</span></td><td>Allen-Bradley、多数 Wago</td></tr>
+        <tr><td><b>字交换 BADC</b></td><td>低字低地址，字内字节交换：<span class="hex">56 78 12 34</span></td><td>部分 Honeywell、BACnet 网关</td></tr>
+        <tr><td><b>字节交换 CDAB</b></td><td>高字低地址，字内字节交换：<span class="hex">34 12 78 56</span></td><td>个别 Beckhoff 端子</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="info"><b>验证技巧：</b>写入一个已知值（如 0x12345678），再读回原始字节流比对，即可确认设备的字节序。（可用 Modbus Poll、QModMaster、Diagslave 等工具查看原始字节。）</div>
+  </section>
+
+  <!-- ================= S14 RS-485 物理层 ================= -->
+  <section id="s14">
+    <h2><span class="num">14</span>RS-485 物理层与布线</h2>
+    <p class="section-intro">Modbus RTU 最常见的物理层是 2 线半双工多点 RS-485 总线。布线失误是现场调试耗时最多的原因。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:30%;">项目</th><th>规范 / 建议</th></tr></thead>
+      <tbody>
+        <tr><td><b>节点数量</b></td><td>经典每段 32 个单位负载（UL）；现代 1/8 UL 收发器最高支持约 256 节点</td></tr>
+        <tr><td><b>总线长度</b></td><td>9600 bps 下最长约 1200 m；115200 bps 下缩至约 200 m</td></tr>
+        <tr><td><b>终端电阻</b></td><td>仅在总线两端各装 120Ω 匹配电阻；中段设备移除跳线</td></tr>
+        <tr><td><b>偏置电阻</b></td><td>通常在主站加 680Ω 上拉/下拉（D1 上拉、D0 下拉到 5V），防止空闲线噪声</td></tr>
+        <tr><td><b>线缆</b></td><td>屏蔽双绞线（如 Belden 3106A），屏蔽层单端接地</td></tr>
+        <tr><td><b>共模电压</b></td><td>相对主站信号地保持 -7V ~ +12V 内</td></tr>
+        <tr><td><b>空闲差分电压</b></td><td>D+ 与 D- 间 ≥ 200mV（建议 200mV~5V）</td></tr>
+        <tr><td><b>支线长度</b></td><td>支线（stub）尽量短，建议 < 20 m</td></tr>
+      </tbody>
+    </table></div>
+    <div class="warn">偏置与终端电阻不可在同一设备上同时安装，否则会形成分压器把总线 DC 电平拉偏。</div>
+  </section>
+
+  <!-- ================= S15 诊断功能 ================= -->
+  <section id="s15">
+    <h2><span class="num">15</span>诊断功能（FC08 子功能）</h2>
+    <p class="section-intro">功能码 0x08 用于主从之间的诊断测试，从站回显子功能码和数据域。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>子功能码</th><th>名称</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">00 00</td><td>Return Query Data</td><td>回显测试（回路环回）</td></tr>
+        <tr><td class="mono">00 01</td><td>Restart Comm Option</td><td>重启通信，可重置从站计数</td></tr>
+        <tr><td class="mono">00 02</td><td>Return Diagnostic Register</td><td>返回 16 位诊断标志</td></tr>
+        <tr><td class="mono">00 04</td><td>Force Listen Only Mode</td><td>强制只听模式，从站停止响应（网络诊断用）</td></tr>
+        <tr><td class="mono">00 0A</td><td>Clear Counters</td><td>清零所有计数器和诊断寄存器</td></tr>
+        <tr><td class="mono">00 0B</td><td>Return Bus Message Count</td><td>自上次清零以来收到的消息总数</td></tr>
+        <tr><td class="mono">00 0C</td><td>Return Bus Comm Error Count</td><td>CRC/奇偶/帧错误计数（衡量链路质量）</td></tr>
+        <tr><td class="mono">00 0D</td><td>Return Slave Exception Error Count</td><td>返回的异常响应次数</td></tr>
+        <tr><td class="mono">00 0E</td><td>Return Slave Message Count</td><td>发给本从站的消息数</td></tr>
+        <tr><td class="mono">00 0F</td><td>Return Slave No Response Count</td><td>寻址到但从站未响应的次数</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="info"><b>用途：</b>用子功能 0x0C 统计 60 秒内的通信错误增长速率，可定位终端、偏置或线缆问题。</div>
+  </section>
+
+  <!-- ================= S16 网关与安全 ================= -->
+  <section id="s16">
+    <h2><span class="num">16</span>网关与安全</h2>
+
+    <h3>串口转以太网网关</h3>
+    <p>典型现场架构为 <b>Modbus TCP 主站 → 串口转以太网网关 → RTU 多从站总线</b>。网关改写 MBAP 头，把目标从站地址填入单元标识（Unit ID），并转发带 CRC 的 PDU。</p>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>场景</th><th>Unit ID 设置</th><th>结果</th></tr></thead>
+      <tbody>
+        <tr><td>指向单一下游从站</td><td>目标从站地址（1~247）</td><td>正确路由并返回单个响应</td></tr>
+        <tr><td>设为 0xFF</td><td>广播至全部从站</td><td>导致串行链路冲突，避免</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>安全考虑（Securing Modbus）</h3>
+    <p>原生 Modbus 无认证、无加密（仅串口 CRC 完整性校验）。在工厂网络中部署建议：</p>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>措施</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>独立 VLAN</td><td>将 Modbus 段隔离，不与办公网互通</td></tr>
+        <tr><td>入口 ACL</td><td>在 TCP/502 上仅放行授权的 Modbus 主站 IP</td></tr>
+        <tr><td>VPN/MACsec</td><td>跨不可信链路时加密隧道</td></tr>
+        <tr><td>关闭多余功能码</td><td>网关若不使用 FC43 封装传输则禁用</td></tr>
+        <tr><td>Modbus/TCP Security</td><td>按 IEC 62443 启用 TLS（端口 802）增强安全性</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- ================= S17 故障排查 ================= -->
+  <section id="s17">
+    <h2><span class="num">17</span>故障排查速查表</h2>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>现象</th><th>可能原因</th><th>检查 / 修复</th></tr></thead>
+      <tbody>
+        <tr><td>无响应，所有从站静默</td><td>波特率/奇偶错误、D+/D- 极性接反</td><td>核对端口参数；测 D+~D- 空闲 ≥200mV；交换 D+/D-</td></tr>
+        <tr><td>单个从站间歇超时</td><td>终端电阻装在中段</td><td>移除该节点终端跳线；仅保留总线两端 120Ω</td></tr>
+        <tr><td>固定寄存器异常码 02</td><td>1 起始/0 起始地址偏差</td><td>报文地址 = 文档地址 - 1；按手册应用偏移</td></tr>
+        <tr><td>数值错误（×256 偏差）</td><td>字节序未交换</td><td>用工具查看原始字节，应用 SWAP 或正确解码器</td></tr>
+        <tr><td>TCP 连接每隔几分钟断开</td><td>防火墙关闭空闲 TCP/502 会话</td><td>主站启用 TCP keep-alive（60s），开放端口</td></tr>
+        <tr><td>轮询周期缓慢</td><td>T3.5 静默间隔过大</td><td>示波器测帧间时间，减小帧间延迟</td></tr>
+        <tr><td>布线后 CRC 错误风暴</td><td>屏蔽层两端接地造成地环路</td><td>屏蔽层仅单端接地</td></tr>
+        <tr><td>FC16 写多寄存器异常码 03</td><td>数量×2 超包缓冲或未对齐</td><td>核对从站最大 PDU（通常 253B），拆分 FC16 事务</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>现场验收流程</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th style="width:8%;">#</th><th>步骤</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>用线缆认证仪或测空闲 D+~D- 差分电压（200mV~5V）确认物理层</td></tr>
+        <tr><td>2</td><td>主站端口接 120Ω 回环，60 秒内通信错误应为 0</td></tr>
+        <tr><td>3</td><td>对从站 1 执行 FC03 读地址 0，验证数据或异常码 02</td></tr>
+        <tr><td>4</td><td>FC17 报告从站 ID，确认固件与运行标识</td></tr>
+        <tr><td>5</td><td>FC08 子功能 0000 用特定模式回环测试，期望精确回显</td></tr>
+        <tr><td>6</td><td>对非关键对象 FC06 写入已知值，再用 FC01/03 读回验证</td></tr>
+        <tr><td>7</td><td>采集 5 分钟 FC08 0x0C 计数，稳态下增长率 &lt; 1 次/小时</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- ================= S18 常用库与资料 ================= -->
+  <section id="s18">
+    <h2><span class="num">18</span>常用库与参考资料</h2>
+    <p class="section-intro">开发时可使用成熟开源库，避免字节序、时序等易错点。</p>
+
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>语言/平台</th><th>库 / 工具</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>Python</td><td>pymodbus、pyModbusTCP</td><td>RTU/ASCII/TCP 全支持，适合上位机与测试</td></tr>
+        <tr><td>C/C++</td><td>libmodbus</td><td>跨平台、工业级，最广泛使用的开源实现</td></tr>
+        <tr><td>.NET / C#</td><td>NModbus4、NModbus</td><td>Windows 上位机常用</td></tr>
+        <tr><td>Node.js</td><td>modbus-serial</td><td>串口与 TCP 均支持</td></tr>
+        <tr><td>调试工具</td><td>Modbus Poll / Slave、QModMaster、Diagslave</td><td>模拟主站/从站、查看原始字节流</td></tr>
+        <tr><td>LabVIEW</td><td>NI Modbus 库</td><td>图形化快速搭建</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="note"><b>官方规范：</b>MODBUS Application Protocol Specification V1.1b3（Modbus.org）、MODBUS over Serial Line V1.02、MODBUS Messaging on TCP/IP V1.0a。</div>
+  </section>
+
+  <!-- ================= FOOTER ================= -->
+  <footer>
+    <p>本文档基于 Modbus 官方规范与工业实践整理，仅供学习与工程参考。数据含义与字节序请以具体设备手册为准。</p>
+    <p>Modbus 协议详解 &mdash; 生成于 2026 年</p>
+  </footer>
+
+</div>
+</body>
+</html>
